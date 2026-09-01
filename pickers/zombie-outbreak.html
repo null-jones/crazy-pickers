@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Zombie Outbreak</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.4, far: 400 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#03040c'], [.6, '#0c1226'], [1, '#2a2340']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.FogExp2(0x090c18, 0.016);
+
+  S.add(new THREE.AmbientLight(0x8f9ad4, 1.15));
+  S.add(new THREE.HemisphereLight(0xa8b2ff, 0x1a1e2e, 1.0));
+  const moon = new THREE.DirectionalLight(0xc4d2ff, 2.0);
+  moon.position.set(-20, 30, -10);
+  moon.castShadow = true;
+  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.camera.left = -40; moon.shadow.camera.right = 40;
+  moon.shadow.camera.top = 40; moon.shadow.camera.bottom = -40;
+  moon.shadow.camera.far = 100;
+  moon.shadow.bias = -0.0006;
+  S.add(moon);
+
+  /* ---------- car park ---------- */
+  const ARENA = { x: 27, zMin: -19, zMax: 23 };
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(140, 120),
+    new THREE.MeshStandardMaterial({ color: 0x30323f, roughness: .95 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  S.add(ground);
+
+  // bay markings
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0xd8d4c4, roughness: .9 });
+  for (let row = -1; row <= 1; row++) {
+    const zc = row * 14 + 2;
+    for (let i = -8; i <= 8; i++) {
+      const l = new THREE.Mesh(new THREE.BoxGeometry(.12, .015, 4.6), lineMat);
+      l.position.set(i * 3.1, .01, zc);
+      S.add(l);
+    }
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(50, .015, .14), lineMat);
+    bar.position.set(0, .01, zc);
+    S.add(bar);
+  }
+
+  // the store
+  const store = Kit.box(64, 10, 8, 0x3a3548, { roughness: .9 });
+  store.position.set(0, 5, -32);
+  S.add(store);
+  const glassStrip = Kit.box(56, 3.2, .3, 0xffe9b8, { emissive: 0xffd58a, emissiveIntensity: 1.6, roughness: .3 });
+  glassStrip.position.set(0, 2.2, -27.9);
+  glassStrip.castShadow = false;
+  S.add(glassStrip);
+  const signTex = Kit.nameTexture('MEGAMART  24HR', { w: 1400, h: 260, bg: '#0d0a1a', fg: '#ff3b3b', fill: .9, shadow: '#ff3b3b', shadowBlur: 34, border: '#ff3b3b', borderWidth: 12 });
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(30, 5.6),
+    new THREE.MeshStandardMaterial({ map: signTex.texture, emissive: 0xffffff, emissiveMap: signTex.texture, emissiveIntensity: 1, roughness: .6 }));
+  sign.position.set(0, 7.6, -27.85);
+  S.add(sign);
+  for (let i = 0; i < 5; i++) {                               // pillars
+    const c = Kit.box(1.2, 8, 1.2, 0x2a2638, { roughness: .9 });
+    c.position.set(-24 + i * 12, 4, -27);
+    S.add(c);
+  }
+
+  // fence round the other three sides
+  const fenceMat = new THREE.MeshStandardMaterial({ color: 0x6d6f7c, roughness: .6, metalness: .6 });
+  function fenceRun(x0, z0, x1, z1) {
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.round(len / 4);
+    for (let i = 0; i <= n; i++) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(.16, 2.2, .16), fenceMat);
+      post.position.set(x0 + (x1 - x0) * i / n, 1.1, z0 + (z1 - z0) * i / n);
+      S.add(post);
+    }
+    [.7, 1.4, 2.05].forEach(y => {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, .06, .06), fenceMat);
+      rail.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+      rail.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+      S.add(rail);
+    });
+  }
+  fenceRun(-ARENA.x - 4, ARENA.zMax + 4, ARENA.x + 4, ARENA.zMax + 4);
+  fenceRun(-ARENA.x - 4, -27, -ARENA.x - 4, ARENA.zMax + 4);
+  fenceRun(ARENA.x + 4, -27, ARENA.x + 4, ARENA.zMax + 4);
+
+  // parked cars — also obstacles the sim steers round
+  const obstacles = [];
+  const CAR_COLS = [0x8a2b3a, 0x2b4a8a, 0xd9d9de, 0x2e2e34, 0x6f8a3a, 0xb8722a];
+  [[-18, 2], [-9, 2], [12, 2], [21, 2], [-21, 16], [6, 16], [15, -12], [-6, -12]].forEach(([x, z]) => {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = Kit.rnd(-.08, .08);
+    const col = Kit.pickOne(CAR_COLS);
+    const body = Kit.box(1.9, .7, 4.1, col, { roughness: .3, metalness: .4 }); body.position.y = .75; g.add(body);
+    const cab = Kit.box(1.7, .62, 2.1, 0x141428, { roughness: .1, metalness: .2, transparent: true, opacity: .8 }); cab.position.set(0, 1.35, -.2); g.add(cab);
+    [[-.8, 1.3], [.8, 1.3], [-.8, -1.3], [.8, -1.3]].forEach(([wx, wz]) => {
+      const w = Kit.cyl(.36, .36, .3, 0x111116, 14, { roughness: .9 }); w.rotation.z = Math.PI / 2; w.position.set(wx, .36, wz); g.add(w);
+    });
+    S.add(g);
+    obstacles.push({ x, z, r: 2.6 });
+  });
+  // abandoned trolleys
+  for (let i = 0; i < 7; i++) {
+    const g = new THREE.Group();
+    g.position.set(Kit.rnd(-24, 24), 0, Kit.rnd(-16, 21));
+    g.rotation.y = Math.random() * 6.28;
+    const cage = new THREE.Mesh(new THREE.BoxGeometry(.7, .6, 1), new THREE.MeshStandardMaterial({ color: 0xaab0c0, roughness: .35, metalness: .8, wireframe: true }));
+    cage.position.y = .75; g.add(cage);
+    const handle = Kit.cyl(.03, .03, .8, 0xd0304a, 8, { roughness: .6 }); handle.rotation.z = Math.PI / 2; handle.position.set(0, 1.08, -.5); g.add(handle);
+    S.add(g);
+  }
+
+  // lamps: emissive heads everywhere, real lights on four
+  for (let i = 0; i < 8; i++) {
+    const x = -24 + (i % 4) * 16, z = i < 4 ? -6 : 10;
+    const pole = Kit.cyl(.12, .16, 6.5, 0x3b3f52, 8, { roughness: .6, metalness: .3 });
+    pole.position.set(x, 3.25, z); S.add(pole);
+    const head = Kit.box(1.1, .26, .5, 0xfff2cf, { emissive: 0xffe2a8, emissiveIntensity: 2.4, roughness: .4 });
+    head.position.set(x, 6.55, z); head.castShadow = false; S.add(head);
+    if (i % 2 === 0) { const l = new THREE.PointLight(0xffe2a8, 70, 34, 2); l.position.set(x, 6.3, z); S.add(l); }
+  }
+
+  /* ---------- people ---------- */
+  let survivors = [], zombies = [], everyone = [];
+  function labelFor(name) {
+    const tex = Kit.nameTexture(name, { w: 512, h: 190, bg: '#f7f4ea', fg: '#14121f', fill: .8, border: '#14121f', borderWidth: 12, radius: 22 }).texture;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(1.75, .65, 1);
+    sp.position.y = 2.45;
+    return sp;
+  }
+  function addSurvivor(name, x, z) {
+    const p = People.make({ x, z, facing: Math.random() * 6.28, name });
+    p.label = labelFor(name);
+    p.g.add(p.label);
+    p.vel = new THREE.Vector3();
+    p.maxSpeed = 3.7;
+    p.doomed = false; p.infected = false;
+    S.add(p.g);
+    survivors.push(p); everyone.push(p);
+    return p;
+  }
+  function addZombie(x, z) {
+    const p = People.make({ x, z, facing: Math.random() * 6.28 });
+    People.zombify(p);
+    p.vel = new THREE.Vector3();
+    p.maxSpeed = Kit.rnd(1.2, 1.7);
+    p.target = null; p.hunting = null;
+    S.add(p.g);
+    zombies.push(p); everyone.push(p);
+    return p;
+  }
+  function clearPeople() {
+    everyone.forEach(p => S.remove(p.g));
+    survivors = []; zombies = []; everyone = [];
+  }
+  function edgeSpawn() {
+    const side = Math.random();
+    if (side < .3) return [Kit.rnd(-ARENA.x, ARENA.x), ARENA.zMax + 3];
+    if (side < .6) return [-ARENA.x - 3, Kit.rnd(ARENA.zMin, ARENA.zMax)];
+    if (side < .9) return [ARENA.x + 3, Kit.rnd(ARENA.zMin, ARENA.zMax)];
+    return [Kit.rnd(-ARENA.x, ARENA.x), -26];
+  }
+  function build(names, zombieCount) {
+    clearPeople();
+    names.forEach((n, i) => {
+      const a = (i / names.length) * Math.PI * 2, r = 2.5 + Math.random() * 3;
+      addSurvivor(n, Math.cos(a) * r, 3 + Math.sin(a) * r);
+    });
+    for (let i = 0; i < zombieCount; i++) { const [x, z] = edgeSpawn(); addZombie(x, z); }
+  }
+  build(Roster.all(), 6);
+
+  /* ---------- the simulation ---------- */
+  const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+  function steerClear(p, force) {
+    // arena walls
+    if (p.g.position.x > ARENA.x) force.x -= (p.g.position.x - ARENA.x) * 3;
+    if (p.g.position.x < -ARENA.x) force.x += (-ARENA.x - p.g.position.x) * 3;
+    if (p.g.position.z > ARENA.zMax) force.z -= (p.g.position.z - ARENA.zMax) * 3;
+    if (p.g.position.z < ARENA.zMin) force.z += (ARENA.zMin - p.g.position.z) * 3;
+    // parked cars
+    obstacles.forEach(o => {
+      const dx = p.g.position.x - o.x, dz = p.g.position.z - o.z, d = Math.hypot(dx, dz);
+      if (d < o.r + .6 && d > .001) { const k = (o.r + .6 - d) * 6 / d; force.x += dx * k; force.z += dz * k; }
+    });
+  }
+  function separate(p, others, radius, strength, force) {
+    others.forEach(q => {
+      if (q === p) return;
+      const dx = p.g.position.x - q.g.position.x, dz = p.g.position.z - q.g.position.z, d = Math.hypot(dx, dz);
+      if (d < radius && d > .001) { const k = (radius - d) * strength / d; force.x += dx * k; force.z += dz * k; }
+    });
+  }
+  function move(p, force, dt) {
+    p.vel.x += (force.x - p.vel.x) * Math.min(1, dt * 4);
+    p.vel.z += (force.z - p.vel.z) * Math.min(1, dt * 4);
+    const sp = Math.hypot(p.vel.x, p.vel.z);
+    if (sp > p.maxSpeed) { p.vel.x *= p.maxSpeed / sp; p.vel.z *= p.maxSpeed / sp; }
+    p.g.position.x += p.vel.x * dt;
+    p.g.position.z += p.vel.z * dt;
+    if (sp > .25) {
+      const want = Math.atan2(p.vel.x, p.vel.z);
+      let d = want - p.g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+      p.g.rotation.y += d * Math.min(1, dt * 9);
+      p.facing = p.g.rotation.y;
+    }
+    return sp;
+  }
+
+  let simT = 0, simulating = false, idling = true, groanT = 0, finale = null;
+  st.add(dt => {
+    simT += dt;
+    if (simulating) {
+      // survivors flee, zombies shamble, hunters sprint
+      survivors.forEach(p => {
+        const f = tmp.set(0, 0, 0);
+        zombies.forEach(z => {
+          const dx = p.g.position.x - z.g.position.x, dz = p.g.position.z - z.g.position.z, d = Math.hypot(dx, dz);
+          if (d < 11 && d > .001) { const k = (z.hunting === p ? 14 : 9) / (d * d) ; f.x += dx * k; f.z += dz * k; }
+        });
+        f.x += Math.sin(simT * .9 + p.phase * 3) * .6;      // a little panic wander
+        f.z += Math.cos(simT * .7 + p.phase * 2) * .6;
+        if (!finale) { f.x -= p.g.position.x * .02; f.z -= (p.g.position.z - 3) * .02; }
+        separate(p, survivors, 1.2, 2.5, f);
+        steerClear(p, f);
+        if (finale && finale.winner === p) { f.set(0, 0, 0); }
+        const spd = move(p, f, dt);
+        if (finale && finale.winner === p) p.mode = 'cheer';
+        else if (p.mode !== 'bitten') p.mode = spd > .5 ? 'run' : 'idle';
+        p.speed = Math.max(.6, spd / 3.7);
+      });
+      zombies.forEach(z => {
+        const f = tmp2.set(0, 0, 0);
+        let target = z.hunting;
+        if (!target || target.infected) {
+          let best = 1e9; target = null;
+          survivors.forEach(s => { const d = s.g.position.distanceTo(z.g.position); if (d < best) { best = d; target = s; } });
+        }
+        if (target) {
+          const dx = target.g.position.x - z.g.position.x, dz = target.g.position.z - z.g.position.z, d = Math.hypot(dx, dz);
+          const stopAt = finale ? 2.4 : 0;
+          if (d > stopAt + .05) { f.x += dx / d * 4; f.z += dz / d * 4; }
+          else if (finale) { f.x -= dx / d * 2; f.z -= dz / d * 2; }
+          // the hunter gets the bite
+          if (z.hunting === target && d < .75 && !target.infected && !finale) infect(target, z);
+        }
+        separate(z, zombies, 1.1, 2.0, f);
+        steerClear(z, f);
+        const spd = move(z, f, dt);
+        z.speed = Math.max(.7, spd / 1.5);
+      });
+      groanT -= dt;
+      if (groanT < 0) { groanT = Kit.rnd(.5, 1.4); SFX.groan(Kit.rnd(.8, 1.25)); }
+    }
+    everyone.forEach(p => People.animate(p, simT, dt));
+    if (idling) {
+      zombies.forEach(z => { const f = tmp2.set(-z.g.position.x * .02, 0, -z.g.position.z * .02); z.g.position.addScaledVector(f, dt * 4); });
+      st.look([Math.sin(simT * .11) * 10, 8.5, 18], [0, 1.2, 2]);
+    }
+    return true;
+  });
+
+  const pendingInfections = new Map();
+  function infect(victim, hunter) {
+    victim.infected = true;
+    victim.mode = 'bitten';
+    hunter.hunting = null;
+    hunter.maxSpeed = Kit.rnd(1.2, 1.7);
+    SFX.chomp(); SFX.scream(Kit.rnd(.85, 1.3));
+    st.shake(.12, .88);
+    Kit.puffs(st, { origin: victim.g.position.clone().setY(1.4), count: 12, color: 0x7cff5e, speed: 2.5, sizeMin: .3, sizeMax: .9, life: 1.1, gravity: 1.2 });
+    setTimeout(() => {
+      People.zombify(victim);
+      victim.maxSpeed = Kit.rnd(1.2, 1.7);
+      victim.label.material.color.set(0x565a6a);
+      victim.label.material.opacity = .55;
+      victim.label.scale.set(1.2, .45, 1);
+      survivors = survivors.filter(s => s !== victim);
+      zombies.push(victim);
+      const done = pendingInfections.get(victim); if (done) { pendingInfections.delete(victim); done(); }
+    }, 600);
+  }
+  const whenInfected = victim => new Promise(res => pendingInfections.set(victim, res));
+
+  function resetScene() {
+    Kit.clearTweens();
+    simulating = false; finale = null;
+    if (spot) { S.remove(spot); S.remove(spot.target); S.remove(beam); spot = null; }
+    build(Roster.all(), 6);
+    idling = true;
+  }
+  let spot = null, beam = null;
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    const names = Roster.all();
+    build(names, Math.max(8, names.length + 6));
+    const hero = survivors.find(s => s.name === winner) || survivors[0];
+    const doomed = survivors.filter(s => s !== hero);
+    for (let i = doomed.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [doomed[i], doomed[j]] = [doomed[j], doomed[i]]; }
+
+    const cam = Kit.chase(st, { rate: 2.2 });
+    const aimAt = () => {
+      const c = new THREE.Vector3();
+      survivors.forEach(s => c.add(s.g.position));
+      c.divideScalar(Math.max(1, survivors.length));
+      const k = .5 + .5 * survivors.length / Math.max(1, names.length);
+      cam.to([c.x + 1, 5 + 6 * k, c.z + 5.5 + 7 * k], [c.x, 1.1, c.z]);
+    };
+    const follow = () => { if (!finale) aimAt(); return true; };
+    st.add(follow);
+
+    api.caption('A quiet night at the MEGAMART.');
+    SFX.alarm(2);
+    await Kit.wait(1200);
+
+    api.caption('They’re coming over the fence.');
+    simulating = true;
+    SFX.heartbeat(0); SFX.heartbeat(.8);
+    await Kit.wait(1600);
+
+    // Hunts overlap rather than queue, so a roster of twenty takes about as
+    // long as a roster of eight. Each victim trips and gets a dedicated zombie.
+    const gap = Math.max(240, Math.min(520, 2600 / Math.max(1, doomed.length)));
+    const countdown = () => { if (!finale) api.caption(`${survivors.length} still uninfected`); return !finale; };
+    st.add(countdown);
+    const hunts = [];
+    for (let i = 0; i < doomed.length; i++) {
+      const v = doomed[i];
+      v.doomed = true;
+      v.maxSpeed = 1.6;                                        // tripped
+      let best = 1e9, hunter = null;
+      zombies.forEach(z => { if (z.hunting) return; const d = z.g.position.distanceTo(v.g.position); if (d < best) { best = d; hunter = z; } });
+      if (!hunter) { const [x, z] = edgeSpawn(); hunter = addZombie(x, z); }
+      hunter.hunting = v; hunter.maxSpeed = 8.5;
+      SFX.heartbeat(0);
+      hunts.push(Promise.race([whenInfected(v), Kit.wait(4200)]).then(() => { if (!v.infected) infect(v, hunter); }));
+      await Kit.wait(gap);
+    }
+    await Promise.all(hunts);
+    await Kit.wait(700);                                       // let the last bite land
+
+    /* last one standing */
+    api.caption(null);
+    finale = { winner: hero };
+    st.remove(follow);
+    const heli = SFX.helicopter();
+    spot = new THREE.SpotLight(0xfff2d0, 260, 40, .32, .5, 1.2);
+    spot.position.set(hero.g.position.x + 2, 20, hero.g.position.z + 3);
+    spot.target.position.copy(hero.g.position);
+    S.add(spot); S.add(spot.target);
+    beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, 4.2, 19, 32, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: .1, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beam.position.set(hero.g.position.x + 1, 10, hero.g.position.z + 1.5);
+    beam.rotation.z = .1;
+    S.add(beam);
+    hero.label.material.color.set(0x7cff5e);
+    hero.label.scale.set(2.2, .82, 1);
+    SFX.cheer(1.6);
+    await Kit.tween(2.8, t => {
+      const p = hero.g.position;
+      spot.position.set(p.x + 2, 20, p.z + 3); spot.target.position.copy(p);
+      beam.position.set(p.x + 1, 10, p.z + 1.5);
+      beam.material.opacity = .1 + Math.sin(t * 3) * .03;
+      cam.to([p.x + 4.5 - t * 1.5, 7 - t * 2.5, p.z + 7 - t * 1.5], [p.x, 1.3, p.z], 2.4);
+    }, 'inOutQuad');
+    api.caption('Last one standing.');
+    await Kit.wait(900);
+    heli.stop(1.5);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'zombie-outbreak',
+    kicker: 'Last one uninfected',
+    tagline: 'The car park is overrun. Whoever is still human at the end has the floor.',
+    goLabel: 'Open the gates',
+    againLabel: 'Another night',
+    verdict: n => `${n} outran the horde, and the horde had a lot to say about it. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

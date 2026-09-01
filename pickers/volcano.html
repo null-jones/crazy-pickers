@@ -10,6 +10,7 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
 <script src="../shared/app.js"></script>
 <script>
@@ -209,7 +210,7 @@
     SFX.rumble(2.4, .28);
     tablets.forEach((tab, i) => {
       const a = (i / n) * Math.PI * 2;
-      const r = 6.2;
+      const r = Math.max(6.2, n * .36);         // 1.5-wide tablets need ~2.2 of arc
       tab.position.set(Math.cos(a) * r, .4, Math.sin(a) * r);
       tab.visible = true;
       Kit.tween(1.1 + i * .05, t => {
@@ -317,9 +318,7 @@
   }
 
   Picker.init({
-    title: 'Volcano Sacrifice',
-    accent: '#ff6a1a',
-    accent2: '#ffd166',
+    key: 'volcano',
     kicker: 'Rejected by the mountain',
     tagline: 'The mountain keeps what it wants and spits back whoever has to talk.',
     goLabel: 'Make the offering',

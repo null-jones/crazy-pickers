@@ -15,21 +15,27 @@ window.Picker = (function () {
   }
 
   function init(opts) {
+    // title/colours come from the shared manifest; the page only names its key
+    const meta = (window.PICKERS || []).find(p => p.key === opts.key) || {};
+    const title = opts.title || meta.title || 'Picker';
     const root = document.body;
     root.classList.add('picker');
-    if (opts.accent) root.style.setProperty('--accent', opts.accent);
-    if (opts.accent2) root.style.setProperty('--accent2', opts.accent2);
-    document.title = opts.title + ' — Crazy Pickers';
+    root.style.setProperty('--accent', opts.accent || meta.accent || '#ff2e6d');
+    root.style.setProperty('--accent2', opts.accent2 || meta.accent2 || '#00e5ff');
+    document.title = title + ' — Crazy Pickers';
 
     /* --- top bar --- */
     const bar = el('div', 'topbar');
     bar.innerHTML = `
       <a class="home" href="../index.html">&larr; <span class="long">All pickers</span></a>
-      <h1 class="title">${opts.title}</h1>
+      <h1 class="title">${title}</h1>
       <div class="spacer"></div>
+      <input class="vol" id="vol" type="range" min="0" max="1" step="0.05" aria-label="Volume">
       <button class="iconbtn" id="btnSound"></button>
       <button class="iconbtn" id="btnNames">Names</button>`;
     root.appendChild(bar);
+    const remainingEl = el('div', 'remaining');
+    root.appendChild(remainingEl);
 
     /* --- go screen --- */
     const gowrap = el('div', 'gowrap');
@@ -48,8 +54,11 @@ window.Picker = (function () {
       <div class="row">
         <button class="btn" id="btnAgain">${opts.againLabel || 'Again'}</button>
         <a class="btn ghost" href="../index.html">Other pickers</a>
-      </div>`;
+      </div>
+      <p class="peekhint">Esc or click outside to look at the scene</p>`;
     root.appendChild(win);
+    const peekback = el('button', 'btn ghost peekback', 'Show result');
+    root.appendChild(peekback);
 
     /* --- roster drawer --- */
     const scrim = el('div', 'scrim');
@@ -69,31 +78,56 @@ window.Picker = (function () {
     root.appendChild(drawer);
 
     const $ = s => document.querySelector(s);
-    const btnGo = $('#btnGo'), btnAgain = $('#btnAgain'), btnSound = $('#btnSound');
+    const btnGo = $('#btnGo'), btnAgain = $('#btnAgain'), btnSound = $('#btnSound'), vol = $('#vol');
     const txt = $('#rosterText'), chk = $('#noRepeat'), usedList = $('#usedList');
 
+    /* --- sound --- */
     function syncSound() { btnSound.textContent = SFX.isMuted() ? '🔇 Sound off' : '🔊 Sound on'; }
     syncSound();
+    vol.value = SFX.getVolume();
     btnSound.onclick = () => { SFX.setMuted(!SFX.isMuted()); syncSound(); if (!SFX.isMuted()) SFX.click(); };
+    vol.oninput = () => {
+      SFX.setVolume(+vol.value);
+      if (SFX.isMuted() && +vol.value > 0) { SFX.setMuted(false); syncSound(); }
+    };
+    vol.onchange = () => { if (!SFX.isMuted()) SFX.tick(); };
 
+    /* --- roster --- */
+    function syncRemaining() {
+      if (!Roster.noRepeat() || Roster.isOverride()) { remainingEl.textContent = ''; return; }
+      const left = Roster.remaining().length, total = Roster.all().length;
+      remainingEl.textContent = left === total ? `${total} names, nobody has gone yet`
+        : left === 0 ? 'Everyone has gone — the cycle resets on the next pick'
+        : `${left} of ${total} still to go`;
+    }
     function syncDrawer() {
-      txt.value = Roster.all().join('\n');
-      chk.checked = Roster.noRepeat();
-      const u = Roster.used();
-      usedList.textContent = Roster.noRepeat()
-        ? (u.length ? 'Already went this cycle: ' + u.join(', ') : 'Nobody has gone yet this cycle.')
-        : 'Pure chaos mode: anyone can be picked any day.';
+      if (Roster.isOverride()) {
+        txt.value = Roster.all().join('\n');
+        txt.disabled = true;
+        usedList.textContent = 'Using the ?names= list from the URL. The saved roster is untouched.';
+      } else {
+        txt.value = Roster.all().join('\n');
+        txt.disabled = false;
+        chk.checked = Roster.noRepeat();
+        const u = Roster.used();
+        usedList.textContent = Roster.noRepeat()
+          ? (u.length ? 'Already went this cycle: ' + u.join(', ') : 'Nobody has gone yet this cycle.')
+          : 'Pure chaos mode: anyone can be picked any day.';
+      }
+      syncRemaining();
     }
     function openDrawer(o) { drawer.classList.toggle('open', o); scrim.classList.toggle('show', o); if (o) syncDrawer(); }
+    function saveDrawer() { if (!Roster.isOverride()) Roster.set(txt.value.split('\n')); syncRemaining(); }
     $('#btnNames').onclick = () => openDrawer(true);
-    $('#btnCloseNames').onclick = () => { Roster.set(txt.value.split('\n')); openDrawer(false); };
-    scrim.onclick = () => { Roster.set(txt.value.split('\n')); openDrawer(false); };
-    txt.oninput = () => Roster.set(txt.value.split('\n'));
+    $('#btnCloseNames').onclick = () => { saveDrawer(); openDrawer(false); };
+    scrim.onclick = () => { saveDrawer(); openDrawer(false); };
+    txt.oninput = saveDrawer;
     chk.onchange = () => { Roster.setNoRepeat(chk.checked); syncDrawer(); };
     $('#btnClearUsed').onclick = () => { Roster.clearUsed(); syncDrawer(); SFX.click(); };
+    syncRemaining();
 
     /* --- run cycle --- */
-    let running = false;
+    let running = false, hasResult = false;
     const api = {
       caption(text) {
         if (!text) { cap.classList.remove('show'); return; }
@@ -103,15 +137,22 @@ window.Picker = (function () {
       names: () => Roster.all()
     };
 
+    function showCard() { win.classList.add('show'); peekback.classList.remove('show'); }
+    function peek() { win.classList.remove('show'); if (hasResult) peekback.classList.add('show'); }
+
     async function go() {
       if (running) return;
       running = true;
+      hasResult = false;
+      peekback.classList.remove('show');
       SFX.ctx();                       // unlock audio inside the click
       gowrap.classList.add('hidden');
       win.classList.remove('show');
       const winner = Roster.pick();
       try { await opts.run(winner, api); }
       catch (e) { console.error(e); }
+      Roster.commit(winner);           // only now does the pick count
+      syncRemaining();
       api.caption(null);
       win.querySelector('.name').textContent = winner;
       const v = typeof opts.verdict === 'function' ? opts.verdict(winner) : (opts.verdict || '');
@@ -119,7 +160,8 @@ window.Picker = (function () {
       win.querySelector('.name').style.animation = 'none';
       void win.querySelector('.name').offsetWidth;
       win.querySelector('.name').style.animation = '';
-      win.classList.add('show');
+      hasResult = true;
+      showCard();
       SFX.fanfare();
       running = false;
     }
@@ -127,18 +169,27 @@ window.Picker = (function () {
     btnGo.onclick = go;
     btnAgain.onclick = async () => {
       win.classList.remove('show');
+      hasResult = false;
       if (opts.reset) await opts.reset();
       await wait(220);
       go();
     };
+    win.addEventListener('click', e => { if (e.target === win) peek(); });
+    peekback.onclick = showCard;
+
     window.addEventListener('keydown', e => {
+      if (e.target === txt || e.target === vol) return;
       if (drawer.classList.contains('open')) { if (e.key === 'Escape') openDrawer(false); return; }
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
         if (win.classList.contains('show')) btnAgain.click();
+        else if (hasResult) showCard();
         else if (!running) go();
       }
-      if (e.key === 'Escape' && win.classList.contains('show')) win.classList.remove('show');
+      if (e.key === 'Escape') {
+        if (win.classList.contains('show')) peek();
+        else if (hasResult) showCard();
+      }
     });
 
     return api;

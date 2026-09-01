@@ -10,6 +10,7 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
 <script src="../shared/app.js"></script>
 <script>
@@ -142,9 +143,13 @@
   function buildRockets() {
     rockets.forEach(r => S.remove(r));
     const names = Roster.all();
+    // more than eight go in two staggered rows, so the pad signs stay readable
+    const rows = names.length > 8 ? 2 : 1, perRow = Math.ceil(names.length / rows);
     rockets = names.map((n, i) => {
       const r = makeRocket(n);
-      r.position.set((i - (names.length - 1) / 2) * SPACING, 0, 0);
+      const row = Math.floor(i / perRow), col = i % perRow;
+      const inRow = row === rows - 1 ? names.length - perRow * (rows - 1) : perRow;
+      r.position.set((col - (inRow - 1) / 2) * SPACING + row * SPACING * .5, 0, -row * 5.2);
       S.add(r);
       return r;
     });
@@ -177,7 +182,7 @@
       }
     });
     if (idling) {
-      const span = Math.max(10, rockets.length * SPACING);
+      const span = Math.max(10, Math.ceil(rockets.length / (rockets.length > 8 ? 2 : 1)) * SPACING);
       st.look([Math.sin(tt * .15) * span * .34, 5.4, span * .95 + 6], [0, 2.6, 0]);
     }
     return true;
@@ -196,7 +201,7 @@
     buildRockets();
     const hero = rockets.find(r => r.userData.name === winner) || rockets[0];
     const doomed = rockets.filter(r => r !== hero);
-    const span = Math.max(10, rockets.length * SPACING);
+    const span = Math.max(10, Math.ceil(rockets.length / (rockets.length > 8 ? 2 : 1)) * SPACING);
 
     api.caption('All engines nominal. Allegedly.');
     st.look([span * .3, 5.4, span * .95 + 6], [0, 2.6, 0]);
@@ -320,9 +325,7 @@
   }
 
   Picker.init({
-    title: 'Launch Failure',
-    accent: '#ff6a3d',
-    accent2: '#6dff9b',
+    key: 'rocket-launch',
     kicker: 'Only rocket to clear the tower',
     tagline: 'Everyone gets a rocket. All of them are lit at once.',
     goLabel: 'Begin countdown',

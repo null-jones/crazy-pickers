@@ -10,7 +10,9 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
 <script src="../shared/app.js"></script>
 <script>
 (function () {
@@ -173,89 +175,28 @@
   }
 
   /* ---------- the crowd ---------- */
-  const SKIN = [0xf0c8a0, 0xd9a273, 0xa9714b, 0x7a4a2c, 0x5a3620, 0xffd9b8];
-  const CLOTH = [0xff5a5f, 0x2ec4b6, 0xffd166, 0x8f7bff, 0xef476f, 0x06d6a0, 0xf78c6b, 0x4cc9f0, 0xe0e0e6, 0x333a56];
-  const peds = [];
-
-  function makePedestrian(x, z, facing) {
-    const g = new THREE.Group();
-    g.position.set(x, .3, z);
-    g.rotation.y = facing;
-    const shirt = Kit.pickOne(CLOTH), legs = Kit.pickOne(CLOTH), skin = Kit.pickOne(SKIN);
-    const scale = Kit.rnd(.88, 1.12);
-    g.scale.setScalar(scale);
-
-    const hips = new THREE.Group();
-    g.add(hips);
-    const torso = Kit.cyl(.21, .26, .62, shirt, 10, { roughness: .85 });
-    torso.position.y = 1.02;
-    hips.add(torso);
-    const head = Kit.ball(.17, skin, 12, { roughness: .8 });
-    head.position.y = 1.48;
-    hips.add(head);
-    const hair = Kit.ball(.175, Kit.pickOne([0x2a1b12, 0x120c0a, 0x6b4423, 0xc9a227, 0x8e2f3f]), 12, { roughness: .95 });
-    hair.scale.set(1, .62, 1);
-    hair.position.y = 1.56;
-    hips.add(hair);
-
-    const arms = [];
-    [-1, 1].forEach(sx => {
-      const pivot = new THREE.Group();
-      pivot.position.set(sx * .26, 1.28, 0);
-      hips.add(pivot);
-      const arm = Kit.cyl(.065, .06, .58, shirt, 8, { roughness: .85 });
-      arm.position.y = -.29;
-      pivot.add(arm);
-      const hand = Kit.ball(.075, skin, 8, { roughness: .8 });
-      hand.position.y = -.6;
-      pivot.add(hand);
-      arms.push(pivot);
-    });
-
-    const legPivots = [];
-    [-1, 1].forEach(sx => {
-      const pivot = new THREE.Group();
-      pivot.position.set(sx * .12, .72, 0);
-      hips.add(pivot);
-      const leg = Kit.cyl(.085, .08, .72, legs, 8, { roughness: .85 });
-      leg.position.y = -.36;
-      pivot.add(leg);
-      const shoe = Kit.box(.16, .1, .28, 0x1c1626, { roughness: .8 });
-      shoe.position.set(0, -.72, .05);
-      pivot.add(shoe);
-      legPivots.push(pivot);
-    });
-
-    [torso, head, legPivots[0].children[0], legPivots[1].children[0]].forEach(m => { m.castShadow = true; });
-    S.add(g);
-    const ped = {
-      g, hips, arms, legPivots, head,
-      phase: Math.random() * 6.28, facing, home: g.position.clone(),
-      startle: 0, fleeing: 0, fleeDir: z >= 0 ? 1 : -1
-    };
-    peds.push(ped);
-    return ped;
-  }
-
   // The crowd that matters is on the far pavement, facing the road, because that
   // is what the impact camera looks across. Near-side ones sit outside the
   // camera's flight path so it cannot fly through them.
-  for (let i = 0; i < 14; i++) {
-    makePedestrian(Kit.rnd(-11, 8), -13.0 - Math.random() * 2.6, Math.PI / 2 + Kit.rnd(-.5, .5));
+  const peds = [];
+  function addPed(x, z, facing) {
+    const p = People.make({ x, z, facing });
+    p.fleeDir = z >= 0 ? 1 : -1;
+    S.add(p.g);
+    peds.push(p);
+    return p;
   }
-  for (let i = 0; i < 5; i++) {
-    makePedestrian(Kit.rnd(-16, 6), 15.6 + Math.random() * 2.4, -Math.PI / 2 + Kit.rnd(-.5, .5));
-  }
+  for (let i = 0; i < 14; i++) addPed(Kit.rnd(-11, 8), -13.0 - Math.random() * 2.6, Math.PI / 2 + Kit.rnd(-.5, .5));
+  for (let i = 0; i < 5; i++) addPed(Kit.rnd(-16, 6), 15.6 + Math.random() * 2.4, -Math.PI / 2 + Kit.rnd(-.5, .5));
   for (let i = 0; i < 9; i++) {
     const far = Math.random() < .6;
-    makePedestrian(Kit.rnd(-72, -20),
-      far ? -(13 + Math.random() * 3) : 15.6 + Math.random() * 2.4, Kit.rnd(0, 6.28));
+    addPed(Kit.rnd(-72, -20), far ? -(13 + Math.random() * 3) : 15.6 + Math.random() * 2.4, Kit.rnd(0, 6.28));
   }
 
   function startleCrowd() {
     peds.forEach(p => {
-      p.startle = 1;
-      if (Math.random() < .55) setTimeout(() => { p.fleeing = 1; }, 260 + Math.random() * 420);
+      p.mode = 'startle'; p.startle = 1;
+      if (Math.random() < .55) setTimeout(() => { p.mode = 'run'; p.speed = 1; }, 260 + Math.random() * 420);
     });
   }
 
@@ -265,38 +206,14 @@
     beacons.forEach((b, i) => {
       b.material.emissiveIntensity = Math.sin(cityT * 2 + i) > .4 ? 4 : .2;
     });
-    peds.forEach((p, i) => {
-      const t = cityT + p.phase;
-      if (p.fleeing > 0) {
+    peds.forEach(p => {
+      if (p.mode === 'run') {
         // leg it, directly away from the road — but stop at the shopfronts
-        // rather than sprinting through the buildings forever
         p.g.position.z += p.fleeDir * dt * 6;
-        if (Math.abs(p.g.position.z - p.home.z) > 9) { p.fleeing = 0; p.facing = p.fleeDir > 0 ? 0 : Math.PI; }
         p.g.rotation.y = p.fleeDir > 0 ? 0 : Math.PI;
-        const stride = Math.sin(t * 16);
-        p.legPivots[0].rotation.x = stride * .9;
-        p.legPivots[1].rotation.x = -stride * .9;
-        p.arms[0].rotation.x = -stride * 1.1;
-        p.arms[1].rotation.x = stride * 1.1;
-        p.hips.position.y = Math.abs(Math.sin(t * 16)) * .09;
-        p.hips.rotation.x = .18;
-      } else if (p.startle > 0) {
-        p.startle = Math.max(0, p.startle - dt * 1.6);
-        const k = p.startle;
-        p.arms.forEach(a => { a.rotation.x = -2.4 * k; a.rotation.z = 0; });
-        p.hips.position.y = Math.sin((1 - k) * Math.PI) * .22;
-        p.hips.rotation.x = -.3 * k;
-        p.g.rotation.y = p.facing + Math.sin(cityT * 18) * .12 * k;
-      } else {
-        // idle: shift weight, glance about
-        p.hips.position.y = Math.sin(t * 1.6) * .012;
-        p.hips.rotation.z = Math.sin(t * .9) * .03;
-        p.arms[0].rotation.x = Math.sin(t * 1.1) * .1;
-        p.arms[1].rotation.x = -Math.sin(t * 1.1 + .6) * .1;
-        p.legPivots[0].rotation.x = 0;
-        p.legPivots[1].rotation.x = 0;
-        p.g.rotation.y = p.facing + Math.sin(t * .4) * .18;
+        if (Math.abs(p.g.position.z - p.home.z) > 9) { p.mode = 'idle'; p.facing = p.fleeDir > 0 ? 0 : Math.PI; }
       }
+      People.animate(p, cityT, dt);
     });
     return true;
   });
@@ -410,14 +327,7 @@
   const START_X = -46;
   function resetCar() {
     Kit.clearTweens();
-    peds.forEach(p => {
-      p.startle = 0; p.fleeing = 0;
-      p.g.position.copy(p.home);
-      p.g.rotation.y = p.facing;
-      p.hips.position.y = 0; p.hips.rotation.set(0, 0, 0);
-      p.arms.forEach(a => a.rotation.set(0, 0, 0));
-      p.legPivots.forEach(l => l.rotation.set(0, 0, 0));
-    });
+    peds.forEach(p => { People.reset(p); p.facing = p.g.rotation.y; });
     car.position.set(START_X, 0, 0);
     car.rotation.set(0, 0, 0);
     carBody.position.set(0, 0, 0);
@@ -594,9 +504,7 @@
   }
 
   Picker.init({
-    title: 'Crash Test Standup',
-    accent: '#ff2e6d',
-    accent2: '#ffd400',
+    key: 'car-crash',
     kicker: 'Sole survivor of the collision',
     tagline: 'Whoever’s number plate we scrape off the tarmac talks first.',
     goLabel: 'Floor it',

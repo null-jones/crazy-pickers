@@ -4,6 +4,7 @@
    ============================================================ */
 window.Kit = (function () {
   const T = () => window.THREE;
+  const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   /* ---------- easing ---------- */
   const ease = {
@@ -94,6 +95,10 @@ window.Kit = (function () {
     }
     addEventListener('resize', resize);
     resize();
+    // rAF stops while the tab is hidden; without this the first frame back
+    // would apply one clamped 50ms step while setTimeout-based waits had
+    // carried on, so swallow the gap.
+    addEventListener('visibilitychange', () => { if (!document.hidden) clock.getDelta(); });
 
     function frame() {
       if (!running) return;
@@ -119,7 +124,7 @@ window.Kit = (function () {
       THREE, renderer, scene, camera, rig, clock,
       add: fn => updates.push(fn),
       remove: fn => { const i = updates.indexOf(fn); if (i >= 0) updates.splice(i, 1); },
-      shake(amount = 0.4, decay = 0.92) { shakeAmt = Math.max(shakeAmt, amount); shakeDecay = decay; },
+      shake(amount = 0.4, decay = 0.92) { if (reduceMotion) return; shakeAmt = Math.max(shakeAmt, amount); shakeDecay = decay; },
       /** place the camera rig and aim it.
           NB: Object3D.lookAt points +Z at the target, but a camera looks down
           -Z — so build the orientation with Matrix4.lookAt (camera convention). */
@@ -130,7 +135,7 @@ window.Kit = (function () {
       },
       dispose() { running = false; }
     };
-    window.__stage = api;   // handy when poking at a scene from the console
+    if (/[?&]debug/.test(location.search)) window.__stage = api;   // console handle, ?debug=1
     return api;
   }
 
@@ -345,11 +350,14 @@ window.Kit = (function () {
       opacity: o.opacity ?? .8, depthWrite: false,
       blending: o.additive === false ? THREE.NormalBlending : THREE.AdditiveBlending
     });
+    // Every sprite in a burst is the same age, so they can share one material.
+    // Only a staggered burst needs per-sprite opacity, and therefore clones.
+    const shared = !o.stagger;
     const group = new THREE.Group();
     st.scene.add(group);
     const items = [];
     for (let i = 0; i < n; i++) {
-      const s = new THREE.Sprite(mat.clone());
+      const s = new THREE.Sprite(shared ? mat : mat.clone());
       const org = o.origin || new THREE.Vector3();
       s.position.set(org.x + rnd(-1, 1) * (o.jitter ?? .2), org.y + rnd(-1, 1) * (o.jitter ?? .2), org.z + rnd(-1, 1) * (o.jitter ?? .2));
       const base = o.dir ? o.dir.clone().normalize().multiplyScalar(o.speed ?? 2) : new THREE.Vector3();
@@ -360,8 +368,10 @@ window.Kit = (function () {
     }
     const life = o.life ?? 1.8;
     let age = 0;
+    const fade = k => (o.opacity ?? .8) * (1 - k) * (k < .1 ? k / .1 : 1);
     st.add(dt => {
       age += dt;
+      if (shared) mat.opacity = fade(Math.min(1, age / life));
       items.forEach(it => {
         if (age < it.delay) { it.s.material.opacity = 0; return; }
         const k = Math.min(1, (age - it.delay) / life);
@@ -369,10 +379,10 @@ window.Kit = (function () {
         it.v.multiplyScalar(1 - (o.drag ?? 1.2) * dt);
         it.s.position.addScaledVector(it.v, dt);
         it.s.scale.addScalar(it.grow * dt);
-        it.s.material.opacity = (o.opacity ?? .8) * (1 - k) * (k < .1 ? k / .1 : 1);
+        if (!shared) it.s.material.opacity = fade(k);
       });
       if (age >= life + (o.stagger || 0)) {
-        group.traverse(c => c.material && c.material.dispose());
+        if (shared) mat.dispose(); else group.traverse(c => c.material && c.material.dispose());
         st.scene.remove(group);
         return false;
       }
@@ -411,6 +421,6 @@ window.Kit = (function () {
 
   return {
     stage, chase, tween, ease, wait, rnd, pickOne, nameTexture, spark, softSprite, env, gradientSky,
-    burst, puffs, box, cyl, ball, clearTweens, texFromCanvas, makeCanvas
+    burst, puffs, box, cyl, ball, clearTweens, texFromCanvas, makeCanvas, reduceMotion
   };
 })();

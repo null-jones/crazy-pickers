@@ -10,6 +10,7 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
 <script src="../shared/app.js"></script>
 <script>
@@ -159,8 +160,15 @@
       }
     }).texture;
   }
-  function buildScraps(names) {
+  function buildScraps(names, winner) {
     scraps.forEach(s => toilet.remove(s.mesh));
+    // more than 14 will not fit in a bowl; the winner always makes the cut
+    if (names.length > 14) {
+      const rest = names.filter(n => n !== winner);
+      for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+      names = [winner || names[0], ...rest.slice(0, 13)];
+    }
+    const twoRings = names.length > 7, sc = twoRings ? .78 : 1;
     scraps = names.map((name, i) => {
       const g = new THREE.Group();
       const paper = new THREE.Mesh(new THREE.PlaneGeometry(.92, .52),
@@ -170,9 +178,12 @@
       g.add(paper);
       const boat = Kit.box(.94, .05, .54, 0xf3ead4, { roughness: .9 });
       g.add(boat);
+      g.scale.setScalar(sc);
       toilet.add(g);
-      const a = (i / names.length) * Math.PI * 2;
-      return { name, mesh: g, angle: a, radius: BOWL_R * .58, y: WATER_Y + .04, gone: false, sink: 0 };
+      const inner = twoRings && i % 2 === 1;
+      const ringCount = twoRings ? Math.ceil(names.length / 2) : names.length;
+      const a = (Math.floor(i / (twoRings ? 2 : 1)) / ringCount) * Math.PI * 2 + (inner ? Math.PI / ringCount : 0);
+      return { name, mesh: g, angle: a, radius: BOWL_R * (inner ? .3 : .58), y: WATER_Y + .04, gone: false, sink: 0 };
     });
   }
 
@@ -211,7 +222,7 @@
   /* ---------- run ---------- */
   async function run(winner, api) {
     idling = false;
-    buildScraps(Roster.all());
+    buildScraps(Roster.all(), winner);
     const order = scraps.filter(s => s.name !== winner);
     for (let i = order.length - 1; i > 0; i--) {           // shuffle the doomed
       const j = Math.floor(Math.random() * (i + 1));
@@ -283,9 +294,7 @@
   }
 
   Picker.init({
-    title: 'Toilet of Destiny',
-    accent: '#2fb6c9',
-    accent2: '#ffd166',
+    key: 'toilet-flush',
     kicker: 'Did not go down',
     tagline: 'Whoever is still floating when the water settles has the floor.',
     goLabel: 'Pull the handle',

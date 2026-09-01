@@ -10,6 +10,7 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
 <script src="../shared/app.js"></script>
 <script>
@@ -176,15 +177,25 @@
   }
 
   let burritos = [];
-  function buildBurritos() {
+  function buildBurritos(winner) {
     burritos.forEach(b => turntable.remove(b));
-    const names = Roster.all();
-    burritos = names.map((n, i) => {
-      const b = makeBurrito(n);
-      const a = (i / names.length) * Math.PI * 2;
-      const r = names.length > 4 ? .72 : .4;
+    let names = Roster.all();
+    if (names.length > 12) {                              // the plate is only so big
+      const rest = names.filter(n => n !== winner);
+      for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+      names = [winner || names[0], ...rest.slice(0, 11)];
+    }
+    const n = names.length, twoRings = n > 5;
+    const sc = twoRings ? .72 : (n > 4 ? .9 : 1);
+    burritos = names.map((name, i) => {
+      const b = makeBurrito(name);
+      const inner = twoRings && i % 2 === 1;
+      const ringCount = twoRings ? Math.ceil(n / 2) : n;
+      const a = (Math.floor(i / (twoRings ? 2 : 1)) / ringCount) * Math.PI * 2 + (inner ? Math.PI / ringCount : 0);
+      const r = twoRings ? (inner ? .36 : .82) : (n > 4 ? .72 : .4);
       b.position.set(Math.cos(a) * r, .12, Math.sin(a) * r);
       b.rotation.y = -a;
+      b.scale.setScalar(sc);
       turntable.add(b);
       return b;
     });
@@ -226,7 +237,7 @@
   /* ---------- run ---------- */
   async function run(winner, api) {
     idling = false;
-    buildBurritos();
+    buildBurritos(winner);
     const chosen = burritos.find(b => b.userData.name === winner) || burritos[0];
 
     st.look([2.8, 2.5, 8.0], [-.3, 1.35, 0]);
@@ -338,9 +349,7 @@
   }
 
   Picker.init({
-    title: 'Microwave Meltdown',
-    accent: '#ffb300',
-    accent2: '#5dff9a',
+    key: 'microwave',
     kicker: 'Pulled from the wreckage',
     tagline: 'Twelve seconds on full power. Whatever is still legible speaks first.',
     goLabel: 'Press start',

@@ -102,16 +102,16 @@ footer code{background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;f
   <header class="hero">
     <p class="eyebrow">Random name pickers · daily standup</p>
     <h1>Crazy<br>Pickers</h1>
-    <p class="sub">Ten ways to decide who talks first. None of them sensible.</p>
+    <p class="sub">Eleven ways to decide who talks first. None of them sensible.</p>
     <div class="herobtns">
-      <a class="cta" href="#pickers">See the ten</a>
+      <a class="cta" href="#pickers">See them all</a>
       <button class="cta ghost" id="surprise">Surprise me</button>
     </div>
     <p class="scrollhint">Scroll ↓</p>
   </header>
 
   <section id="pickers">
-    <h2 class="sec">The Ten</h2>
+    <h2 class="sec">The Pickers</h2>
     <div class="grid" id="grid"></div>
   </section>
 
@@ -120,7 +120,7 @@ footer code{background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;f
   <section class="roster">
     <div>
       <h2 class="sec" style="font-size:30px">The Roster</h2>
-      <p class="seclead" style="margin-bottom:14px">One name per line. Shared by all ten pickers.</p>
+      <p class="seclead" style="margin-bottom:14px">One name per line. Shared by every picker.</p>
       <textarea id="names" spellcheck="false"></textarea>
       <label class="chk"><input type="checkbox" id="norepeat">
         <span>No repeats — everybody goes once before anybody goes twice</span></label>
@@ -142,38 +142,18 @@ footer code{background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;f
 <script src="vendor/three.global.js"></script>
 <script src="shared/sfx.js"></script>
 <script src="shared/roster.js"></script>
+<script src="shared/pickers.js"></script>
 <script src="shared/three-kit.js"></script>
 <script>
-const PICKERS = [
-  { file: 'car-crash',       emoji: '🚗', c: '#ff2e6d', title: 'Crash Test Standup',
-    blurb: 'A name on a number plate, a wall, and no brakes.' },
-  { file: 'cat-vomit',       emoji: '🐈', c: '#8fd14a', title: 'Hairball Roulette',
-    blurb: 'The cat ate the roster. It returns one name, slightly damp.' },
-  { file: 'toilet-flush',    emoji: '🚽', c: '#2fb6c9', title: 'Toilet of Destiny',
-    blurb: 'Everyone in the bowl. Last one floating speaks.' },
-  { file: 'volcano',         emoji: '🌋', c: '#ff6a1a', title: 'Volcano Sacrifice',
-    blurb: 'Names in stone, into the crater. It spits one back.' },
-  { file: 'claw-machine',    emoji: '🕹️', c: '#ff3ea5', title: 'The Claw Decides',
-    blurb: 'An arcade claw, gripping at 4% of advertised strength.' },
-  { file: 'shark-tank',      emoji: '🦈', c: '#19a6c9', title: 'Shark Tank',
-    blurb: 'The team is on surfboards. Something below has an opinion.' },
-  { file: 'alien-abduction', emoji: '🛸', c: '#8dfbe0', title: 'Alien Abduction',
-    blurb: 'Your colleagues are cows. The saucer takes one.' },
-  { file: 'seance',          emoji: '🔮', c: '#7ee3ff', title: 'Standup Séance',
-    blurb: 'A planchette spells the name out, letter by letter.' },
-  { file: 'rocket-launch',   emoji: '🚀', c: '#ff6a3d', title: 'Launch Failure',
-    blurb: 'Everyone gets a rocket. Most will not be fine.' },
-  { file: 'microwave',       emoji: '📟', c: '#ffb300', title: 'Microwave Meltdown',
-    blurb: 'Names in foil. Twelve seconds. One legible survivor.' }
-];
+// PICKERS comes from shared/pickers.js
 
 /* ---------- cards ---------- */
 const grid = document.getElementById('grid');
 PICKERS.forEach((p, i) => {
   const a = document.createElement('a');
   a.className = 'card';
-  a.href = `pickers/${p.file}.html`;
-  a.style.setProperty('--c', p.c);
+  a.href = `pickers/${p.key}.html`;
+  a.style.setProperty('--c', p.accent);
   a.innerHTML = `<span class="num">${String(i + 1).padStart(2, '0')}</span>
     <div class="emoji">${p.emoji}</div>
     <h3>${p.title}</h3>
@@ -190,10 +170,18 @@ PICKERS.forEach((p, i) => {
   grid.appendChild(a);
 });
 
+// Surprise me cycles through the pickers you have not used lately, same trick
+// as the no-repeat roster.
 document.getElementById('surprise').onclick = () => {
-  const p = PICKERS[Math.floor(Math.random() * PICKERS.length)];
+  const K = 'crazy-pickers:picker-used';
+  let seen = [];
+  try { seen = JSON.parse(localStorage.getItem(K)) || []; } catch (e) {}
+  let pool = PICKERS.filter(p => !seen.includes(p.key));
+  if (!pool.length) { seen = []; pool = PICKERS.slice(); }
+  const p = pool[Math.floor(Math.random() * pool.length)];
+  try { localStorage.setItem(K, JSON.stringify(seen.concat([p.key]))); } catch (e) {}
   try { SFX.tone({ freq: 300, to: 1200, dur: .3, type: 'square', gain: .12 }); } catch (e) {}
-  setTimeout(() => { location.href = `pickers/${p.file}.html`; }, 160);
+  setTimeout(() => { location.href = `pickers/${p.key}.html`; }, 160);
 };
 
 /* ---------- roster ---------- */
@@ -230,7 +218,7 @@ sync();
   PICKERS.forEach((p, i) => {
     const a = (i / PICKERS.length) * Math.PI * 2;
     const tex = Kit.nameTexture(p.title.split(' ')[0], {
-      w: 640, h: 400, bg: 'rgba(0,0,0,0)', fg: p.c, fill: .78, shadow: p.c, shadowBlur: 40
+      w: 640, h: 400, bg: 'rgba(0,0,0,0)', fg: p.accent, fill: .78, shadow: p.accent, shadowBlur: 40
     }).texture;
     const tile = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.3),
       new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: .34, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -240,7 +228,7 @@ sync();
     ring.add(tile);
 
     const frame = new THREE.Mesh(new THREE.TorusGeometry(1.3, .03, 8, 40),
-      new THREE.MeshBasicMaterial({ color: p.c, transparent: true, opacity: .22 }));
+      new THREE.MeshBasicMaterial({ color: p.accent, transparent: true, opacity: .22 }));
     frame.position.copy(tile.position).multiplyScalar(1.18);
     frame.position.y = tile.position.y * 1.1;
     ring.add(frame);
@@ -252,7 +240,7 @@ sync();
   const cObj = new THREE.Color();
   for (let i = 0; i < 500; i++) {
     pts.push(Kit.rnd(-34, 34), Kit.rnd(-16, 16), Kit.rnd(-30, 12));
-    cObj.set(PICKERS[i % PICKERS.length].c);
+    cObj.set(PICKERS[i % PICKERS.length].accent);
     cols.push(cObj.r, cObj.g, cObj.b);
   }
   moteGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));

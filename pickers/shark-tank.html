@@ -10,6 +10,7 @@
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
 <script src="../shared/three-kit.js"></script>
 <script src="../shared/app.js"></script>
 <script>
@@ -93,15 +94,17 @@
     return g;
   }
 
-  let boards = [];
+  let boards = [], R = 7.5, K = 1;          // ring radius, and how far cameras scale with it
   function buildBoards() {
     boards.forEach(b => S.remove(b));
     const names = Roster.all();
+    R = Math.max(7.5, names.length * .62);   // 3.2-long boards need ~3.9 of arc each
+    K = R / 7.5;
     boards = names.map((n, i) => {
       const b = makeBoard(n);
       const a = (i / names.length) * Math.PI * 2;
       b.userData.a = a;
-      b.userData.r = 7.5;
+      b.userData.r = R;
       S.add(b);
       return b;
     });
@@ -203,7 +206,7 @@
   shark.position.set(0, -4.5, 0);
 
   /* ---------- animation state ---------- */
-  let tt = 0, idling = true, sharkAngle = 0, sharkRadius = 14, sharkDepth = -4.5, tailWag = 1;
+  let tt = 0, idling = true, sharkAngle = 0, sharkRadius = R + 6.5, sharkDepth = -4.5, tailWag = 1;
   st.add(dt => {
     tt += dt;
     // waves
@@ -239,7 +242,7 @@
     tailGroup.rotation.y = Math.sin(wag) * .38;
     tailFin.rotation.y = Math.sin(wag - .5) * .24;             // fin lags the stem
 
-    if (idling) st.look([Math.sin(tt * .12) * 8, 9.5, 15.5], [0, .2, 0]);
+    if (idling) st.look([Math.sin(tt * .12) * 8 * K, 9.5 * K, 15.5 * K], [0, .2, 0]);
     return true;
   });
 
@@ -248,7 +251,7 @@
     buildBoards();
     shark.userData.manual = false;
     shark.visible = true;
-    sharkDepth = -4.5; sharkRadius = 14; tailWag = 1;
+    sharkDepth = -4.5; sharkRadius = R + 6.5; tailWag = 1;
     jaw.rotation.x = 0;
     tailGroup.rotation.y = 0;
     idling = true;
@@ -265,7 +268,7 @@
     const cam = Kit.chase(st, { rate: 2.0 });
     api.caption('A perfectly ordinary team swim.');
     SFX.noise({ dur: 3, freq: 700, type: 'bandpass', Q: .8, gain: .1, attack: .8 });
-    cam.to([2, 4.1, 14], [0, .4, 0]);
+    cam.to([2 * K, 4.1 * K, 14 * K], [0, .4, 0]);
     await Kit.wait(1600);
 
     // fin circles, tension builds
@@ -276,10 +279,10 @@
       SFX.heartbeat(0);
       SFX.tone({ freq: 46 + i * 3, to: 32, dur: .5, type: 'sine', gain: .22 });
       const closeness = i / (beats - 1);
-      sharkRadius = 14 - closeness * 5.2;
+      sharkRadius = (R + 6.5) - closeness * 5.2;
       sharkDepth = -1.15 + closeness * .55;
       tailWag = 1 + closeness * 1.4;
-      cam.to([2 - closeness, 3.4 - closeness * 1.1, 13.5 - closeness * 2.6],
+      cam.to([(2 - closeness) * K, (3.4 - closeness * 1.1) * K, (13.5 - closeness * 2.6) * K],
              [Math.cos(sharkAngle) * sharkRadius * .45, .3, Math.sin(sharkAngle) * sharkRadius * .45],
              2.0 + closeness * 1.6);
       await Kit.wait(560 - i * 45);
@@ -289,7 +292,7 @@
     api.caption(null);
     shark.userData.manual = true;
     const vp = victim.position.clone();
-    const approach = vp.clone().normalize().multiplyScalar(11);
+    const approach = vp.clone().normalize().multiplyScalar(R + 3.5);
     shark.position.set(approach.x, -3.2, approach.z);
     const dir = new THREE.Vector3().subVectors(vp, approach).normalize();
     const yaw = Math.atan2(dir.x, dir.z);
@@ -358,9 +361,7 @@
   }
 
   Picker.init({
-    title: 'Shark Tank',
-    accent: '#19a6c9',
-    accent2: '#ffd166',
+    key: 'shark-tank',
     kicker: 'Board recovered, rider missing',
     tagline: 'There is something under the surfboards and it has an opinion.',
     goLabel: 'Get in the water',

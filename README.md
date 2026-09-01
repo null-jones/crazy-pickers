@@ -1,6 +1,6 @@
 # Crazy Pickers
 
-Ten stupid ways to decide who talks first in standup. Each one is a 3D scene
+Eleven stupid ways to decide who talks first in standup. Each one is a 3D scene
 with sound. No build step, no dependencies, no network.
 
 **[Open them →](https://null-jones.github.io/crazy-pickers/)**
@@ -19,17 +19,24 @@ with sound. No build step, no dependencies, no network.
 | 🔮 | **Standup Séance** | A ouija planchette spells the name out, letter by letter |
 | 🚀 | **Launch Failure** | Everyone gets a rocket. Most will not be fine |
 | 📟 | **Microwave Meltdown** | Names in foil, twelve seconds, one legible survivor |
+| 🧟 | **Zombie Outbreak** | A supermarket car park is overrun. Last one uninfected has the floor |
 
 ## Names
 
 Edit the roster on the home page, or from the **Names** button in any picker.
-It's kept in `localStorage` and shared by all ten.
+It's kept in `localStorage` and shared by every picker.
 
 - **No repeats** is on by default: everyone goes once before anyone goes twice.
-- `?names=Ada,Grace,Linus` overrides the list for a single page load.
+  A pick only counts once its animation finishes, so a reload mid-run doesn't
+  burn it. The picker pages show how many are still to go.
+- `?names=Ada,Grace,Linus` overrides the list for a single page load without
+  touching the saved roster or its cycle.
+- Duplicate names are collapsed (case-insensitively).
 
-Space or Enter runs a picker (and re-runs it once a result is up). Esc closes
-the result. Sound is on by default, with a mute toggle in each picker.
+Space or Enter runs a picker, and re-runs it once a result is up. Esc (or a
+click outside the card) hides the result so you can look at the scene. Each
+picker has a mute toggle and a volume slider; both are remembered.
+`prefers-reduced-motion` turns off the camera shake and the slam-in text.
 
 ## Running it locally
 
@@ -47,12 +54,14 @@ python3 serve.py     # http://localhost:4173
 ```
 index.html              home page: 3D background, card grid, roster editor
 pickers/*.html          one self-contained scene each
+shared/pickers.js       the list of pickers: key, title, colours, blurb
 shared/base.css         top bar, GO button, captions, result card, drawer
 shared/app.js           Picker.init() — wires that chrome to a picker's run()
 shared/roster.js        the shared name list and no-repeat cycle
 shared/sfx.js           every sound, synthesised from WebAudio primitives
 shared/three-kit.js     stage and render loop, promise tweens, name textures,
                         camera shake, chase camera, debris and smoke
+shared/people.js        low-poly people: idle, run, startle, shamble, cheer
 vendor/three.global.js  three.js r160 (MIT)
 serve.py                static server that refuses to cache
 ```
@@ -62,16 +71,16 @@ buffers; every plate, sign and label is drawn into a `<canvas>` at runtime.
 
 ## Adding a picker
 
-Copy any file in `pickers/` and add it to the `PICKERS` array in `index.html`.
-The shape is always:
+Copy any file in `pickers/` and add an entry to `shared/pickers.js` — that
+gives it a card on the home page and its title and colours. The page itself is
+always the same shape:
 
 ```js
 const st = Kit.stage({ fov: 50 });   // renderer, scene, camera rig, loop
 // ...build the scene...
 
 Picker.init({
-  title: 'Whatever Happens',
-  accent: '#ff2e6d',
+  key: 'whatever-happens',           // matches shared/pickers.js
   tagline: 'One line, sold to the audience.',
   goLabel: 'Do the thing',
   verdict: n => `${n} goes first.`,
@@ -81,7 +90,11 @@ Picker.init({
 ```
 
 `run()` gets the winner up front, so the animation can cheat outrageously to
-land on it. When the promise resolves, the chrome shows the result card.
+land on it. When the promise resolves, the chrome shows the result card and
+commits the pick. If your scene lays names out in a ring or a row, derive the
+spacing from `names.length` — rosters of twenty happen.
+
+Add `?debug=1` to any picker URL to get the stage as `window.__stage`.
 
 Two things that will bite you:
 

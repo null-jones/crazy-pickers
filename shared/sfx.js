@@ -7,12 +7,14 @@ window.SFX = (function () {
   let AC = null;
   let master = null;
   let muted = localStorage.getItem('crazy-pickers:muted') === '1';
+  let volume = parseFloat(localStorage.getItem('crazy-pickers:volume'));
+  if (!(volume >= 0 && volume <= 1)) volume = 0.8;
 
   function ctx() {
     if (!AC) {
       AC = new (window.AudioContext || window.webkitAudioContext)();
       master = AC.createGain();
-      master.gain.value = muted ? 0 : 0.9;
+      master.gain.value = muted ? 0 : volume;
       master.connect(AC.destination);
     }
     if (AC.state === 'suspended') AC.resume();
@@ -20,12 +22,19 @@ window.SFX = (function () {
   }
   const now = () => ctx().currentTime;
 
+  function applyMaster() { if (master) master.gain.setTargetAtTime(muted ? 0 : Math.max(1e-4, volume), now(), 0.02); }
   function setMuted(m) {
     muted = m;
     localStorage.setItem('crazy-pickers:muted', m ? '1' : '0');
-    if (master) master.gain.setTargetAtTime(m ? 0 : 0.9, now(), 0.02);
+    applyMaster();
   }
   const isMuted = () => muted;
+  function setVolume(v) {
+    volume = Math.min(1, Math.max(0, v));
+    localStorage.setItem('crazy-pickers:volume', String(volume));
+    applyMaster();
+  }
+  const getVolume = () => volume;
 
   /* ---------- primitives ---------- */
 
@@ -141,7 +150,7 @@ window.SFX = (function () {
   /* ---------- named effects ---------- */
 
   const S = {
-    ctx, setMuted, isMuted, tone, noise, drone,
+    ctx, setMuted, isMuted, setVolume, getVolume, tone, noise, drone,
 
     click(v = 0.25) { tone({ freq: 900, to: 300, dur: 0.06, type: 'square', gain: v }); },
     tick() { noise({ dur: 0.03, freq: 4000, type: 'highpass', gain: 0.15 }); },
@@ -346,6 +355,53 @@ window.SFX = (function () {
       for (let i = 0; i < 26; i++) {
         tone({ at: Math.random() * dur * 0.7, freq: 700 + Math.random() * 1600, dur: 0.15 + Math.random() * 0.3, type: 'triangle', gain: 0.02 });
       }
+    },
+
+    groan(pitch = 1) {
+      const c = ctx(), t = c.currentTime, dur = 1.1 + Math.random() * .6;
+      const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
+      const lfo = c.createOscillator(), lg = c.createGain();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(78 * pitch, t);
+      o.frequency.linearRampToValueAtTime(58 * pitch, t + dur);
+      lfo.frequency.value = 5 + Math.random() * 3; lg.gain.value = 6;
+      lfo.connect(lg); lg.connect(o.frequency);
+      f.type = 'lowpass'; f.frequency.setValueAtTime(260, t); f.frequency.linearRampToValueAtTime(520, t + dur * .5); f.Q.value = 4;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + .25);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t); lfo.start(t); o.stop(t + dur + .05); lfo.stop(t + dur + .05);
+    },
+
+    scream(pitch = 1) {
+      tone({ freq: 700 * pitch, to: 1500 * pitch, dur: .22, type: 'sawtooth', gain: .12, filter: 'bandpass', filterFreq: 1400, Q: 3 });
+      tone({ at: .2, freq: 1500 * pitch, to: 520 * pitch, dur: .5, type: 'sawtooth', gain: .14, filter: 'bandpass', filterFreq: 1200, Q: 3 });
+      noise({ dur: .6, freq: 2400, type: 'bandpass', Q: 1.5, gain: .06 });
+    },
+
+    // rotor thud: noise whose loudness is chopped by a low-frequency LFO
+    helicopter() {
+      const c = ctx(), t = c.currentTime;
+      const src = c.createBufferSource(); src.buffer = noiseBuffer(); src.loop = true;
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 380;
+      const chop = c.createGain(); chop.gain.value = .5;
+      const lfo = c.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 12;
+      const lg = c.createGain(); lg.gain.value = .5;
+      lfo.connect(lg); lg.connect(chop.gain);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(.3, t + 1.2);
+      src.connect(f); f.connect(chop); chop.connect(g); g.connect(master);
+      src.start(t); lfo.start(t);
+      return {
+        gain: g,
+        stop(fade = 1) {
+          const tt = ctx().currentTime;
+          g.gain.setTargetAtTime(0.0001, tt, fade / 3);
+          try { src.stop(tt + fade + .2); lfo.stop(tt + fade + .2); } catch (e) {}
+        }
+      };
     },
 
     sadTrombone() {
