@@ -3,7 +3,7 @@
 Eleven stupid ways to decide who talks first in standup. Each one is a 3D scene
 with sound. No build step, no dependencies, no network.
 
-**[Open them →](https://null-jones.github.io/crazy-pickers/)**
+**[Open them →](https://elliej.dev/crazy-pickers/)**
 
 ## The pickers
 
