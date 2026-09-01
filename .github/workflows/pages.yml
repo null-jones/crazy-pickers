@@ -22,11 +22,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # Needs Settings > Pages > Source set to "GitHub Actions" once.
       - uses: actions/configure-pages@v5
-        with:
-          # turns Pages on for the repo on the first run, so there is no
-          # manual step in Settings
-          enablement: true
       # Static site: the repo root is the artifact, there is nothing to build.
       - uses: actions/upload-pages-artifact@v3
         with:
