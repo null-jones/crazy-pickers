@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Standup Séance</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 46, exposure: 1.25 });
+  const S = st.scene;
+
+  S.background = new THREE.Color(0x080510);
+  S.fog = new THREE.FogExp2(0x080510, .05);
+  Kit.env(st, Kit.gradientSky([[0, '#1a1226'], [1, '#2b1a1a']]));
+
+  S.add(new THREE.AmbientLight(0x6b5aa0, 0.5));
+  const overhead = new THREE.PointLight(0xffb670, 12, 14, 2);
+  overhead.position.set(0, 4.2, 0);
+  overhead.castShadow = true;
+  overhead.shadow.mapSize.set(1024, 1024);
+  S.add(overhead);
+
+  /* ---------- room ---------- */
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshStandardMaterial({ color: 0x2a1c22, roughness: .95 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  S.add(floor);
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(4.6, 40),
+    new THREE.MeshStandardMaterial({ color: 0x5a1f2c, roughness: 1 }));
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.y = .01;
+  rug.receiveShadow = true;
+  S.add(rug);
+
+  /* ---------- table ---------- */
+  const TABLE_Y = 1.55;
+  const wood = { color: 0x4a2f1e, roughness: .55, metalness: .05 };
+  const table = new THREE.Group();
+  S.add(table);
+  const top = Kit.cyl(2.5, 2.5, .16, 0x4a2f1e, 48, wood);
+  top.position.y = TABLE_Y;
+  table.add(top);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(2.5, .07, 10, 48),
+    new THREE.MeshStandardMaterial({ color: 0x35200f, roughness: .5 }));
+  lip.rotation.x = Math.PI / 2;
+  lip.position.y = TABLE_Y - .02;
+  table.add(lip);
+  const column = Kit.cyl(.28, .42, TABLE_Y - .1, 0x3d2617, 18, wood);
+  column.position.y = (TABLE_Y - .1) / 2;
+  table.add(column);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const foot = Kit.box(.22, .16, 1.5, 0x3d2617, wood);
+    foot.position.set(Math.cos(a) * .55, .09, Math.sin(a) * .55);
+    foot.rotation.y = -a;
+    table.add(foot);
+  }
+
+  /* ---------- the board ---------- */
+  const BW = 1024, BH = 660;
+  const LETTERS1 = 'ABCDEFGHIJKLM'.split('');
+  const LETTERS2 = 'NOPQRSTUVWXYZ'.split('');
+  const DIGITS = '0123456789'.split('');
+  const spots = {};                                  // char -> {x,y} in canvas px
+
+  LETTERS1.forEach((ch, i) => {
+    const th = Math.PI * (0.96 - (i / (LETTERS1.length - 1)) * 0.92);
+    spots[ch] = { x: 512 + Math.cos(th) * 396, y: 292 - Math.sin(th) * 74 };
+  });
+  LETTERS2.forEach((ch, i) => {
+    const th = Math.PI * (0.94 - (i / (LETTERS2.length - 1)) * 0.88);
+    spots[ch] = { x: 512 + Math.cos(th) * 352, y: 430 - Math.sin(th) * 66 };
+  });
+  DIGITS.forEach((ch, i) => { spots[ch] = { x: 262 + i * 55.5, y: 538 }; });
+
+  const boardCanvasKit = (function () {
+    const [c, x] = Kit.makeCanvas(BW, BH);
+    // aged parchment
+    x.fillStyle = '#dcc79c'; x.fillRect(0, 0, BW, BH);
+    const g2 = x.createRadialGradient(BW / 2, BH / 2, 40, BW / 2, BH / 2, BW * .6);
+    g2.addColorStop(0, 'rgba(255,244,214,.85)'); g2.addColorStop(1, 'rgba(60,36,16,.55)');
+    x.fillStyle = g2; x.fillRect(0, 0, BW, BH);
+    for (let i = 0; i < 900; i++) {
+      x.fillStyle = `rgba(80,50,20,${Math.random() * .1})`;
+      x.beginPath(); x.arc(Math.random() * BW, Math.random() * BH, Math.random() * 9, 0, 7); x.fill();
+    }
+    x.strokeStyle = '#4a2c12'; x.lineWidth = 9;
+    if (x.roundRect) { x.beginPath(); x.roundRect(18, 18, BW - 36, BH - 36, 22); x.stroke(); }
+    x.fillStyle = '#3b2410';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+
+    x.font = "bold 54px 'Impact','Arial Black',sans-serif";
+    x.fillText('YES', 132, 92);
+    x.fillText('NO', BW - 132, 92);
+    x.font = "bold 40px 'Impact','Arial Black',sans-serif";
+    x.fillText('G O O D B Y E', BW / 2, BH - 52);
+    // sun & moon
+    x.beginPath(); x.arc(132, 200, 34, 0, 7); x.fillStyle = '#3b2410'; x.fill();
+    x.beginPath(); x.arc(BW - 120, 200, 34, 0, 7); x.fill();
+    x.globalCompositeOperation = 'destination-out';
+    x.beginPath(); x.arc(BW - 106, 190, 30, 0, 7); x.fill();
+    x.globalCompositeOperation = 'source-over';
+
+    x.fillStyle = '#2f1c0c';
+    x.font = "bold 62px 'Impact','Arial Black',sans-serif";
+    Object.keys(spots).forEach(ch => {
+      x.font = /\d/.test(ch) ? "bold 46px 'Impact','Arial Black',sans-serif" : "bold 62px 'Impact','Arial Black',sans-serif";
+      x.fillText(ch, spots[ch].x, spots[ch].y);
+    });
+    return { canvas: c, texture: Kit.texFromCanvas(c) };
+  })();
+
+  const BOARD_W = 3.7, BOARD_H = BOARD_W * BH / BW;
+  const boardGeo = new THREE.PlaneGeometry(BOARD_W, BOARD_H);
+  boardGeo.rotateX(-Math.PI / 2);
+  const board = new THREE.Mesh(boardGeo,
+    new THREE.MeshStandardMaterial({ map: boardCanvasKit.texture, roughness: .78 }));
+  board.position.y = TABLE_Y + .09;
+  board.receiveShadow = true;
+  S.add(board);
+
+  // canvas px -> world
+  function spotToWorld(ch) {
+    const s = spots[ch];
+    if (!s) return null;
+    return new THREE.Vector3(
+      (s.x / BW - .5) * BOARD_W,
+      TABLE_Y + .1,
+      -(0.5 - s.y / BH) * BOARD_H
+    );
+  }
+
+  /* ---------- planchette ---------- */
+  const planchette = new THREE.Group();
+  (function () {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, .42);
+    shape.bezierCurveTo(.34, .3, .42, -.06, .3, -.3);
+    shape.bezierCurveTo(.12, -.44, -.12, -.44, -.3, -.3);
+    shape.bezierCurveTo(-.42, -.06, -.34, .3, 0, .42);
+    const hole = new THREE.Path();
+    hole.absarc(0, .1, .14, 0, Math.PI * 2, true);
+    shape.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: .07, bevelEnabled: true, bevelSize: .02, bevelThickness: .02, bevelSegments: 2, curveSegments: 18 });
+    geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x6b4426, roughness: .4, metalness: .1 }));
+    m.castShadow = true;
+    planchette.add(m);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.15, .022, 10, 26),
+      new THREE.MeshStandardMaterial({ color: 0xd9c188, roughness: .25, metalness: .9 }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(0, .075, -.1);
+    planchette.add(ring);
+    [-1, 1].forEach(sx => {
+      const leg = Kit.cyl(.05, .05, .07, 0x3a2412, 10, { roughness: .6 });
+      leg.position.set(sx * .22, -.02, .2);
+      planchette.add(leg);
+    });
+  })();
+  planchette.position.set(0, TABLE_Y + .12, .35);
+  S.add(planchette);
+  const planLight = new THREE.PointLight(0x9df0ff, 0, 3, 2);
+  planLight.position.y = .3;
+  planchette.add(planLight);
+
+  /* ---------- candles ---------- */
+  const candles = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+    const g = new THREE.Group();
+    g.position.set(Math.cos(a) * 2.05, TABLE_Y + .09, Math.sin(a) * 2.05);
+    S.add(g);
+    const body = Kit.cyl(.09, .1, Kit.rnd(.5, .75), 0xf0e2c0, 14, { roughness: .8 });
+    body.position.y = body.geometry.parameters.height / 2;
+    g.add(body);
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: Kit.spark('rgba(255,214,130,1)', 'rgba(255,90,0,0)'),
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: .95
+    }));
+    flame.scale.set(.24, .42, .24);
+    flame.position.y = body.geometry.parameters.height + .12;
+    g.add(flame);
+    const light = new THREE.PointLight(0xffb060, 5.5, 8, 2);
+    light.position.y = body.geometry.parameters.height + .16;
+    g.add(light);
+    candles.push({ g, flame, light, lit: true, base: light.intensity });
+  }
+
+  /* ---------- floating letters ---------- */
+  let letterMeshes = [];
+  function spawnLetter(ch, idx, total) {
+    const tex = Kit.nameTexture(ch, {
+      w: 256, h: 256, fg: '#bff3ff', fill: .7, shadow: '#4ad6ff', shadowBlur: 40
+    }).texture;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(.56, .56),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const spread = .5;
+    m.position.set((idx - (total - 1) / 2) * spread, TABLE_Y + 1.15, -.1);
+    S.add(m);
+    letterMeshes.push(m);
+    Kit.tween(.7, t => {
+      m.material.opacity = t;
+      m.position.y = TABLE_Y + .5 + t * .65;
+      m.scale.setScalar(.5 + t * .5);
+    }, 'outCubic');
+    return m;
+  }
+
+  /* ---------- ambience ---------- */
+  let tt = 0, idling = true;
+  st.add(dt => {
+    tt += dt;
+    candles.forEach((c, i) => {
+      if (!c.lit) return;
+      const f = .78 + Math.sin(tt * 9 + i * 2.1) * .12 + Math.sin(tt * 23 + i) * .08;
+      c.light.intensity = c.base * f;
+      c.flame.scale.set(.22 * f, .4 * f, .22);
+      c.flame.position.x = Math.sin(tt * 6 + i) * .012;
+    });
+    overhead.intensity = 10 + Math.sin(tt * 2.7) * 1.6;
+    letterMeshes.forEach((m, i) => { m.position.y += Math.sin(tt * 2 + i) * .0006; });
+    if (idling) {
+      planchette.position.x = Math.sin(tt * .5) * .12;
+      planchette.position.z = .35 + Math.cos(tt * .43) * .1;
+      planchette.rotation.y = Math.sin(tt * .3) * .1;
+      st.look([Math.sin(tt * .12) * 1.5, 3.5, 4.2], [0, TABLE_Y + .15, -.1]);
+    }
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    letterMeshes.forEach(m => S.remove(m));
+    letterMeshes = [];
+    candles.forEach(c => { c.lit = true; c.flame.visible = true; c.light.intensity = c.base; });
+    planchette.position.set(0, TABLE_Y + .12, .35);
+    planchette.rotation.set(0, 0, 0);
+    planLight.intensity = 0;
+    overhead.intensity = 10;
+    idling = true;
+  }
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    letterMeshes.forEach(m => S.remove(m));
+    letterMeshes = [];
+
+    const chars = winner.toUpperCase().split('').filter(ch => spots[ch]);
+    const seq = chars.length ? chars : ['?'];
+
+    st.look([1.5, 3.5, 4.2], [0, TABLE_Y + .15, -.1]);
+    api.caption('Is anybody there?');
+    SFX.ghost(2.4);
+    await Kit.tween(1.6, t => {
+      st.look([1.5 - t * 1.5, 3.5 - t * .2, 4.2 - t * .5], [0, TABLE_Y + .2, -.1]);
+      overhead.intensity = 10 - t * 6;
+    }, 'inOutQuad');
+
+    // spirit arrives
+    api.caption('Something is here.');
+    SFX.creak(1.2);
+    st.shake(.05, .95);
+    candles.forEach((c, i) => Kit.tween(.6, t => { c.base = 5.5 + Math.sin(t * 20 + i) * 3.5; }, 'linear'));
+    planLight.intensity = 0;
+    await Kit.tween(.9, t => { planLight.intensity = t * 4; }, 'outQuad');
+
+    // spell it out
+    api.caption(null);
+    for (let i = 0; i < seq.length; i++) {
+      const target = spotToWorld(seq[i]);
+      const from = planchette.position.clone();
+      const dir = new THREE.Vector3().subVectors(target, from);
+      const dist = dir.length();
+      const dur = .45 + Math.min(.65, dist * .16);
+      SFX.noise({ dur, freq: 260, to: 150, type: 'bandpass', Q: 2.5, gain: .09 });
+      SFX.creak(dur * .9);
+      await Kit.tween(dur, t => {
+        const e = Kit.ease.inOutCubic(t);
+        planchette.position.lerpVectors(from, target, e);
+        planchette.position.y = TABLE_Y + .12 + Math.sin(t * Math.PI) * .04;
+        planchette.rotation.y = Math.atan2(dir.x, dir.z) * Math.sin(t * Math.PI) * .35;
+        planchette.rotation.z = Math.sin(t * Math.PI * 2) * .04;
+        st.look([Math.sin(i * .7) * .75, 3.3, 3.75], [planchette.position.x * .22, TABLE_Y + .28, planchette.position.z * .22 - .15]);
+      }, 'linear');
+      // land on the letter
+      SFX.ding(680 + i * 60);
+      SFX.tone({ freq: 90, to: 50, dur: .2, type: 'sine', gain: .12 });
+      st.shake(.035, .85);
+      planLight.intensity = 9;
+      Kit.tween(.5, t => { planLight.intensity = 9 - t * 5; }, 'outQuad');
+      spawnLetter(seq[i], i, seq.length);
+      await Kit.wait(230);
+    }
+
+    // the spirit departs
+    api.caption('The spirit has spoken.');
+    SFX.ghost(2.6);
+    await Kit.tween(.9, t => {
+      planchette.rotation.y += .28;
+      planchette.position.y = TABLE_Y + .12 + Math.sin(t * Math.PI) * .35;
+      planLight.intensity = 4 + Math.sin(t * 22) * 4;
+      st.look([0, 3.35 - t * .1, 3.8 - t * .2], [0, TABLE_Y + .7, -.15]);
+    }, 'linear');
+
+    SFX.whoosh(.7, .35);
+    SFX.noise({ dur: .35, freq: 3000, to: 400, type: 'bandpass', Q: 1, gain: .2 });
+    candles.forEach((c, i) => {
+      setTimeout(() => {
+        c.lit = false;
+        c.flame.visible = false;
+        c.light.intensity = 0;
+        Kit.puffs(st, { origin: c.g.position.clone().setY(c.light.position.y + c.g.position.y), count: 5, color: 0x8a8a9a, speed: .7, sizeMin: .1, sizeMax: .5, life: 1.6, gravity: .5, additive: false, opacity: .5 });
+      }, i * 130);
+    });
+    st.shake(.12, .9);
+    Kit.tween(.8, t => { overhead.intensity = 4 * (1 - t); planLight.intensity = 4 * (1 - t); }, 'outQuad');
+
+    // the name burns
+    await Kit.tween(1.2, t => {
+      letterMeshes.forEach((m, i) => {
+        m.material.opacity = 1;
+        m.scale.setScalar(1 + t * .55);
+        m.position.y = TABLE_Y + 1.15 + t * .28;
+      });
+      st.look([0, TABLE_Y + 1.55, 3.6 - t * .5], [0, TABLE_Y + 1.4, -.1]);
+    }, 'outCubic');
+    SFX.ghost(1.6);
+    await Kit.wait(700);
+  }
+
+  Picker.init({
+    title: 'Standup Séance',
+    accent: '#7ee3ff',
+    accent2: '#ffb060',
+    kicker: 'Spelled out by the beyond',
+    tagline: 'Hands on the planchette. The spirits always answer.',
+    goLabel: 'Contact the other side',
+    againLabel: 'Ask again',
+    verdict: n => `The board spelled ${n}, then went quiet. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Toilet of Destiny</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 48, exposure: 1.2 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#dff3ff'], [.5, '#9fc6dd'], [1, '#5d7f96']]);
+  S.background = new THREE.Color(0x9fc3d6);
+  Kit.env(st, sky);
+
+  S.add(new THREE.AmbientLight(0xffffff, 0.85));
+  S.add(new THREE.HemisphereLight(0xffffff, 0x7c8fa6, 0.9));
+  const key = new THREE.DirectionalLight(0xfff6e8, 2.1);
+  key.position.set(4, 11, 6);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -8; key.shadow.camera.right = 8;
+  key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
+  key.shadow.bias = -0.0006;
+  S.add(key);
+  const fillL = new THREE.DirectionalLight(0xbfe4ff, 0.8);
+  fillL.position.set(-7, 5, -5);
+  S.add(fillL);
+
+  /* ---------- bathroom ---------- */
+  const tileTex = (function () {
+    const [c, x] = Kit.makeCanvas(256, 256);
+    x.fillStyle = '#dfe7ea'; x.fillRect(0, 0, 256, 256);
+    x.fillStyle = '#c3ced4';
+    x.fillRect(0, 0, 256, 6); x.fillRect(0, 0, 6, 256);
+    x.fillRect(0, 128, 256, 5); x.fillRect(128, 0, 5, 256);
+    const t = Kit.texFromCanvas(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(9, 9);
+    return t;
+  })();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(28, 28),
+    new THREE.MeshStandardMaterial({ map: tileTex, roughness: .35, metalness: .02 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  S.add(floor);
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(28, 16),
+    new THREE.MeshStandardMaterial({ map: tileTex.clone(), roughness: .3 }));
+  backWall.material.map.repeat.set(9, 5);
+  backWall.position.set(0, 8, -5.4);
+  backWall.receiveShadow = true;
+  S.add(backWall);
+
+  /* ---------- the throne ---------- */
+  const PORC = { color: 0xfbfdff, roughness: .12, metalness: .04 };
+  const toilet = new THREE.Group();
+  S.add(toilet);
+
+  const pedestal = Kit.cyl(1.15, 1.5, 1.5, 0xfbfdff, 28, PORC);
+  pedestal.position.y = .75;
+  toilet.add(pedestal);
+
+  const BOWL_R = 1.72, RIM_Y = 2.0;
+  const bowlOuter = new THREE.Mesh(
+    new THREE.CylinderGeometry(BOWL_R, 1.12, .95, 40, 1, true),
+    new THREE.MeshStandardMaterial(Object.assign({ side: THREE.DoubleSide }, PORC))
+  );
+  bowlOuter.position.y = RIM_Y - .48;
+  bowlOuter.castShadow = true; bowlOuter.receiveShadow = true;
+  toilet.add(bowlOuter);
+  const bowlFloor = Kit.cyl(1.12, .34, .5, 0xfbfdff, 32, PORC);
+  bowlFloor.position.y = RIM_Y - 1.2;
+  toilet.add(bowlFloor);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(BOWL_R, .14, 14, 44),
+    new THREE.MeshStandardMaterial(PORC));
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = RIM_Y;
+  rim.castShadow = true;
+  toilet.add(rim);
+
+  const cistern = Kit.box(2.5, 1.9, 1.0, 0xfbfdff, PORC);
+  cistern.position.set(0, 2.6, -1.85);
+  toilet.add(cistern);
+  const lid = Kit.box(2.66, .18, 1.16, 0xfbfdff, PORC);
+  lid.position.set(0, 3.62, -1.85);
+  toilet.add(lid);
+  const seatLid = new THREE.Mesh(new THREE.TorusGeometry(BOWL_R * .98, .2, 12, 40),
+    new THREE.MeshStandardMaterial({ color: 0xe9eef2, roughness: .2 }));
+  seatLid.rotation.set(Math.PI / 2, 0, 0);
+  seatLid.position.set(0, 2.2, .05);
+  toilet.add(seatLid);
+  const lidUp = Kit.box(2.9, .16, 2.4, 0xe9eef2, { roughness: .25 });
+  lidUp.position.set(0, 3.0, -1.3);
+  lidUp.rotation.x = -1.15;
+  toilet.add(lidUp);
+
+  const handle = Kit.cyl(.11, .11, .5, 0xd8c07a, 14, { roughness: .25, metalness: .85 });
+  handle.rotation.z = Math.PI / 2;
+  handle.position.set(-1.42, 3.15, -1.6);
+  toilet.add(handle);
+
+  // supporting cast
+  const roll = Kit.cyl(.42, .42, .58, 0xffffff, 24, { roughness: .95 });
+  roll.rotation.z = Math.PI / 2;
+  roll.position.set(-3.3, 2.1, -1.2);
+  S.add(roll);
+  const rollCore = Kit.cyl(.14, .14, .62, 0xbfa07a, 14, { roughness: .9 });
+  rollCore.rotation.z = Math.PI / 2;
+  rollCore.position.copy(roll.position);
+  S.add(rollCore);
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(.8, 1.5),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .95, side: THREE.DoubleSide }));
+  sheet.position.set(-3.3, 1.3, -.95);
+  sheet.rotation.y = .1;
+  S.add(sheet);
+  const plungerStick = Kit.cyl(.07, .07, 1.5, 0xa9713c, 12, { roughness: .8 });
+  plungerStick.position.set(3.1, .95, -1.4);
+  S.add(plungerStick);
+  const plungerCup = new THREE.Mesh(new THREE.SphereGeometry(.38, 20, 12, 0, 6.3, 0, 1.6),
+    new THREE.MeshStandardMaterial({ color: 0xb8352f, roughness: .7, side: THREE.DoubleSide }));
+  plungerCup.rotation.x = Math.PI;
+  plungerCup.position.set(3.1, .38, -1.4);
+  S.add(plungerCup);
+
+  /* ---------- water ---------- */
+  const WATER_Y = RIM_Y - .62;
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x2fb6c9, roughness: .06, metalness: .25, transparent: true, opacity: .82
+  });
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(BOWL_R * .93, 1.05, .9, 44), waterMat);
+  water.position.y = WATER_Y - .45;
+  toilet.add(water);
+
+  // the funnel that opens up when it all goes down
+  const vortex = new THREE.Mesh(
+    new THREE.CylinderGeometry(.05, BOWL_R * .8, 1.5, 40, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x1d8fa3, roughness: .05, metalness: .3, transparent: true, opacity: .0, side: THREE.DoubleSide })
+  );
+  vortex.position.y = WATER_Y - .6;
+  toilet.add(vortex);
+
+  /* ---------- the contestants ---------- */
+  let scraps = [];
+  function scrapTexture(name) {
+    return Kit.nameTexture(name, {
+      w: 512, h: 288, bg: '#fffdf3', fg: '#16324a', fill: .8,
+      after(x, w, h) {
+        x.strokeStyle = 'rgba(20,50,70,.25)'; x.lineWidth = 6;
+        x.strokeRect(14, 14, w - 28, h - 28);
+      }
+    }).texture;
+  }
+  function buildScraps(names) {
+    scraps.forEach(s => toilet.remove(s.mesh));
+    scraps = names.map((name, i) => {
+      const g = new THREE.Group();
+      const paper = new THREE.Mesh(new THREE.PlaneGeometry(.92, .52),
+        new THREE.MeshStandardMaterial({ map: scrapTexture(name), roughness: .8, side: THREE.DoubleSide }));
+      paper.rotation.x = -Math.PI / 2;
+      paper.position.y = .055;
+      g.add(paper);
+      const boat = Kit.box(.94, .05, .54, 0xf3ead4, { roughness: .9 });
+      g.add(boat);
+      toilet.add(g);
+      const a = (i / names.length) * Math.PI * 2;
+      return { name, mesh: g, angle: a, radius: BOWL_R * .58, y: WATER_Y + .04, gone: false, sink: 0 };
+    });
+  }
+
+  /* ---------- motion ---------- */
+  let spin = 0.35, tt = 0, waterY = WATER_Y, idling = true;
+  st.add(dt => {
+    tt += dt;
+    water.rotation.y += spin * dt * 1.6;
+    vortex.rotation.y -= spin * dt * 2.4;
+    scraps.forEach((s, i) => {
+      if (s.gone) return;
+      s.angle += spin * dt * (1 + s.radius * .1);
+      const wob = Math.sin(tt * 2.2 + i) * .02;
+      s.mesh.position.set(Math.cos(s.angle) * s.radius, s.y + wob - s.sink, Math.sin(s.angle) * s.radius);
+      s.mesh.rotation.y = -s.angle + Math.PI / 2;
+      s.mesh.rotation.z = Math.sin(tt * 2 + i) * .12 + Math.min(.9, spin * .06);
+      s.mesh.rotation.x = Math.cos(tt * 1.7 + i) * .1;
+    });
+    if (idling) st.look([Math.sin(tt * .18) * 2.4, 6.0, 5.6], [0, 1.9, 0]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    spin = .35; waterY = WATER_Y;
+    water.position.y = WATER_Y - .45;
+    water.scale.set(1, 1, 1);
+    vortex.material.opacity = 0;
+    vortex.scale.set(1, 1, 1);
+    handle.rotation.x = 0;
+    buildScraps(Roster.all());
+    idling = true;
+  }
+  buildScraps(Roster.all());
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    buildScraps(Roster.all());
+    const order = scraps.filter(s => s.name !== winner);
+    for (let i = order.length - 1; i > 0; i--) {           // shuffle the doomed
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    const champ = scraps.find(s => s.name === winner) || scraps[0];
+
+    api.caption('Everyone into the bowl.');
+    await Kit.tween(1.2, t => {
+      st.look([2.4 - t * 2.4, 6.0 - t * .7, 5.6 - t * 1.5], [0, 1.9 + t * .02, 0]);
+    }, 'inOutQuad');
+
+    // FLUSH
+    api.caption('Flushing…');
+    SFX.click(.4);
+    await Kit.tween(.18, t => { handle.rotation.x = t * .9; }, 'outQuad');
+    const flushSound = SFX.flush(5.2);
+    Kit.tween(.4, t => { handle.rotation.x = (1 - t) * .9; }, 'outQuad');
+
+    // spin up, water rises then drains
+    Kit.tween(1.4, t => { spin = .35 + t * 7.5; }, 'inQuad');
+    Kit.tween(.8, t => {
+      water.position.y = WATER_Y - .45 + t * .22;
+      scraps.forEach(s => { s.y = WATER_Y + .04 + t * .22; });
+    }, 'outQuad');
+    Kit.tween(1.0, t => { vortex.material.opacity = t * .85; }, 'outQuad');
+    await Kit.tween(1.0, t => {
+      st.look([0, 5.3 - t * .4, 4.1 - t * .7], [0, 1.95, 0]);
+    }, 'inOutQuad');
+
+    // eliminate one at a time
+    const gap = Math.max(260, Math.min(600, 3600 / Math.max(1, order.length)));
+    for (let i = 0; i < order.length; i++) {
+      const s = order[i];
+      s.gone = true;
+      const startR = s.radius, startA = s.angle, startY = s.y;
+      SFX.bubble(0);
+      Kit.tween(.62, t => {
+        const a = startA + t * 9;
+        const r = startR * (1 - t) * (1 - t * .3);
+        s.mesh.position.set(Math.cos(a) * r, startY - t * t * 1.7, Math.sin(a) * r);
+        s.mesh.rotation.y = -a;
+        s.mesh.rotation.x = t * 3.4;
+        s.mesh.scale.setScalar(Math.max(.001, 1 - t * .85));
+      }, 'inQuad').then(() => { s.mesh.visible = false; });
+      if (i === order.length - 1) { SFX.tone({ freq: 340, to: 90, dur: .35, type: 'sine', gain: .18 }); }
+      else SFX.tone({ freq: Kit.rnd(300, 520), to: 110, dur: .22, type: 'sine', gain: .1 });
+      api.caption(`${order.length - i} left in the bowl`);
+      await Kit.wait(gap);
+    }
+
+    // the survivor
+    api.caption(null);
+    SFX.tone({ freq: 180, to: 520, dur: .5, type: 'sine', gain: .14 });
+    Kit.tween(2.0, t => { spin = 7.85 * (1 - t) + .3; }, 'outCubic');
+    Kit.tween(1.6, t => {
+      vortex.material.opacity = .85 * (1 - t);
+      water.position.y = WATER_Y - .23 - t * .04;
+    }, 'outQuad');
+    await Kit.tween(2.0, t => {
+      champ.radius = BOWL_R * .58 * (1 - t) + .02;
+      champ.y = WATER_Y + .26 + t * .5;
+      st.look([0, 4.9 - t * .6, 3.4 - t * .9], [0, 2.0 + t * .25, 0]);
+    }, 'outCubic');
+    SFX.ding(920);
+    SFX.splash();
+    Kit.puffs(st, { origin: new THREE.Vector3(0, WATER_Y + .5, 0), count: 16, color: 0x9fe8ff, speed: 2.2, sizeMin: .2, sizeMax: .6, life: 1.1, gravity: -1.2 });
+    await Kit.wait(750);
+  }
+
+  Picker.init({
+    title: 'Toilet of Destiny',
+    accent: '#2fb6c9',
+    accent2: '#ffd166',
+    kicker: 'Did not go down',
+    tagline: 'Whoever is still floating when the water settles has the floor.',
+    goLabel: 'Pull the handle',
+    againLabel: 'Flush again',
+    verdict: n => `${n} refused to be flushed. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

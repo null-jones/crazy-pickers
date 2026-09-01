@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hairball Roulette</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 46, exposure: 1.3 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#3b2a52'], [.5, '#6d4f6a'], [1, '#c79a72']]);
+  S.background = new THREE.Color(0x241a2e);
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0x241a2e, 14, 42);
+
+  S.add(new THREE.AmbientLight(0xd9c6ff, 0.95));
+  S.add(new THREE.HemisphereLight(0xfff0d8, 0x3a2440, 0.7));
+  const key = new THREE.DirectionalLight(0xffe6c0, 2.2);
+  key.position.set(5, 9, 7);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -10; key.shadow.camera.right = 10;
+  key.shadow.camera.top = 10; key.shadow.camera.bottom = -6;
+  key.shadow.bias = -0.0006;
+  S.add(key);
+  const rim = new THREE.DirectionalLight(0x8fb4ff, 0.9);
+  rim.position.set(-6, 4, -8);
+  S.add(rim);
+
+  /* ---------- the living room ---------- */
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshStandardMaterial({ color: 0x6b4630, roughness: .82 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  S.add(floor);
+
+  // floorboards
+  for (let i = -14; i < 14; i++) {
+    const line = Kit.box(40, .012, .04, 0x4a2f20, { roughness: .9 });
+    line.position.set(0, .006, i * 1.1);
+    line.castShadow = false;
+    S.add(line);
+  }
+  // a nice rug, about to be ruined
+  const rug = new THREE.Mesh(
+    new THREE.CircleGeometry(4.6, 48),
+    new THREE.MeshStandardMaterial({ color: 0x1f6f74, roughness: .95 })
+  );
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.y = .02;
+  rug.receiveShadow = true;
+  S.add(rug);
+  const rugRing = new THREE.Mesh(
+    new THREE.RingGeometry(3.5, 4.05, 48),
+    new THREE.MeshStandardMaterial({ color: 0xe8c86a, roughness: .95, side: THREE.DoubleSide })
+  );
+  rugRing.rotation.x = -Math.PI / 2;
+  rugRing.position.y = .03;
+  S.add(rugRing);
+
+  // wall + skirting behind
+  const wall = Kit.box(40, 14, .4, 0x3c2c4d, { roughness: .95 });
+  wall.position.set(0, 7, -9);
+  S.add(wall);
+  const skirting = Kit.box(40, .7, .55, 0x2a1f36, { roughness: .8 });
+  skirting.position.set(0, .35, -8.9);
+  S.add(skirting);
+
+  /* ---------- the cat ---------- */
+  const GINGER = 0xe08c3f, CREAM = 0xf6dcb4;
+  const cat = new THREE.Group();
+  cat.position.set(0, 0, 0);
+  S.add(cat);
+
+  const catBody = new THREE.Group();      // everything that squashes
+  cat.add(catBody);
+
+  const fur = { roughness: .92, metalness: 0 };
+  const body = Kit.ball(.78, GINGER, 28, fur);
+  body.scale.set(1, 1.05, 1.15);
+  body.position.y = .8;
+  catBody.add(body);
+
+  const belly = Kit.ball(.55, CREAM, 22, fur);
+  belly.scale.set(.9, 1, .7);
+  belly.position.set(0, .68, .48);
+  catBody.add(belly);
+
+  // stripes, because a plain cat is a wasted opportunity
+  for (let i = 0; i < 4; i++) {
+    const stripe = Kit.box(.5 - i * .06, .1, .5, 0xa85f22, fur);
+    stripe.position.set(0, 1.22 - i * .22, -.55 + i * .05);
+    stripe.rotation.x = .2;
+    catBody.add(stripe);
+  }
+
+  const head = new THREE.Group();
+  head.position.set(0, 1.62, .18);
+  catBody.add(head);
+  const skull = Kit.ball(.52, GINGER, 28, fur);
+  head.add(skull);
+  const muzzle = Kit.ball(.3, CREAM, 20, fur);
+  muzzle.scale.set(1.2, .78, .9);
+  muzzle.position.set(0, -.16, .38);
+  head.add(muzzle);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(.075, .09, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff9bb0, roughness: .5 }));
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, -.08, .66);
+  head.add(nose);
+
+  const mouth = new THREE.Mesh(
+    new THREE.SphereGeometry(.2, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x5c1524, roughness: .5, side: THREE.DoubleSide })
+  );
+  mouth.rotation.x = Math.PI * 0.85;
+  mouth.position.set(0, -.26, .52);
+  mouth.scale.setScalar(.01);
+  head.add(mouth);
+
+  const eyes = [];
+  [-1, 1].forEach(sx => {
+    const e = Kit.ball(.13, 0xd8f24a, 18, { roughness: .18, metalness: 0 });
+    e.position.set(sx * .22, .1, .42);
+    e.scale.set(1, 1, .6);
+    head.add(e);
+    const pupil = Kit.ball(.055, 0x120c12, 12, { roughness: .3 });
+    pupil.scale.set(.45, 1.15, 1);
+    pupil.position.set(sx * .22, .1, .53);
+    head.add(pupil);
+    const lid = Kit.ball(.145, GINGER, 18, fur);
+    lid.position.set(sx * .22, .26, .4);
+    lid.scale.set(1, .1, .7);
+    head.add(lid);
+    eyes.push({ e, pupil, lid });
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(.2, .38, 4),
+      new THREE.MeshStandardMaterial({ color: GINGER, roughness: .92, flatShading: true }));
+    ear.position.set(sx * .32, .52, -.02);
+    ear.rotation.z = sx * .22;
+    ear.castShadow = true;
+    head.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(.11, .24, 4),
+      new THREE.MeshStandardMaterial({ color: 0xf6a6bb, roughness: .9, flatShading: true }));
+    inner.position.set(sx * .32, .52, .07);
+    inner.rotation.z = sx * .22;
+    head.add(inner);
+    // whiskers
+    for (let k = -1; k <= 1; k++) {
+      const w = Kit.cyl(.008, .008, .8, 0xfdf2e0, 5, { roughness: .5 });
+      w.position.set(sx * .28, -.14 + k * .07, .5);
+      w.rotation.z = Math.PI / 2 + sx * (.25 + k * .18);
+      w.rotation.y = sx * .5;
+      head.add(w);
+    }
+  });
+
+  // paws
+  [-1, 1].forEach(sx => {
+    const paw = Kit.ball(.19, CREAM, 16, fur);
+    paw.scale.set(1, .72, 1.4);
+    paw.position.set(sx * .34, .19, .78);
+    catBody.add(paw);
+    const back = Kit.ball(.24, GINGER, 16, fur);
+    back.scale.set(1, .8, 1.1);
+    back.position.set(sx * .56, .24, -.42);
+    catBody.add(back);
+  });
+
+  // tail — a chain of spheres animated as a wave
+  const tail = [];
+  for (let i = 0; i < 9; i++) {
+    const seg = Kit.ball(.15 - i * .008, i % 2 ? 0xa85f22 : GINGER, 14, fur);
+    catBody.add(seg);
+    tail.push(seg);
+  }
+  function poseTail(t, lift) {
+    tail.forEach((seg, i) => {
+      const k = i / (tail.length - 1);
+      const sway = Math.sin(t * 2.4 - k * 2.6) * (.35 + k * .75);
+      seg.position.set(sway * .5, .42 + k * (1.0 + lift * .8) - k * k * .35, -.9 - k * .72);
+    });
+  }
+
+  /* ---------- the hairball ---------- */
+  function lumpGeometry(r, bumps) {
+    const g = new THREE.IcosahedronGeometry(r, 2);
+    const p = g.attributes.position;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const n = Math.sin(v.x * bumps) * Math.cos(v.y * bumps) * Math.sin(v.z * bumps);
+      v.multiplyScalar(1 + n * .22 + Math.random() * .06);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+  const hairball = new THREE.Group();
+  const lump = new THREE.Mesh(lumpGeometry(.34, 7),
+    new THREE.MeshStandardMaterial({ color: 0x7c5330, roughness: .95, flatShading: true }));
+  lump.castShadow = true;
+  hairball.add(lump);
+  const slime = new THREE.Mesh(lumpGeometry(.37, 5),
+    new THREE.MeshStandardMaterial({ color: 0x8fd14a, roughness: .12, metalness: .1, transparent: true, opacity: .55 }));
+  hairball.add(slime);
+  for (let i = 0; i < 26; i++) {                       // stray fur
+    const s = Kit.cyl(.004, .012, Kit.rnd(.12, .3), 0x6a4526, 4, { roughness: 1 });
+    const dir = new THREE.Vector3(Kit.rnd(-1, 1), Kit.rnd(-1, 1), Kit.rnd(-1, 1)).normalize();
+    s.position.copy(dir.clone().multiplyScalar(.33));
+    s.lookAt(dir.clone().multiplyScalar(2));
+    s.rotateX(Math.PI / 2);
+    hairball.add(s);
+  }
+  hairball.visible = false;
+  S.add(hairball);
+
+  /* ---------- the soggy note ---------- */
+  const noteTex = Kit.nameTexture('', {
+    w: 900, h: 520, bg: '#efe3c4', fg: '#2a1c10', fill: .8,
+    font: "'Impact','Arial Black',sans-serif",
+    after(x, w, h, s) {
+      x.save();
+      x.globalCompositeOperation = 'multiply';
+      for (let i = 0; i < 16; i++) {                    // splotches of, well, cat
+        x.fillStyle = `rgba(${120 + Math.random() * 60},${150 + Math.random() * 60},60,${.14 + Math.random() * .2})`;
+        x.beginPath();
+        x.ellipse(Math.random() * w, Math.random() * h, 18 + Math.random() * 70, 14 + Math.random() * 50, Math.random() * 3, 0, 7);
+        x.fill();
+      }
+      x.restore();
+      x.fillStyle = 'rgba(60,40,20,.75)';
+      x.font = 'bold 30px system-ui, sans-serif';
+      x.textAlign = 'center';
+      x.fillText('RECOVERED FROM THE RUG', w / 2, 62);
+      x.fillText('— GOES FIRST —', w / 2, h - 46);
+    }
+  });
+  const note = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.9, 1.1),
+    new THREE.MeshStandardMaterial({ map: noteTex.texture, roughness: .85, side: THREE.DoubleSide, transparent: true })
+  );
+  note.rotation.x = -Math.PI / 2;
+  note.visible = false;
+  S.add(note);
+
+  /* ---------- idle life ---------- */
+  let clockT = 0, blink = 0, breathing = true;
+  st.add(dt => {
+    clockT += dt;
+    poseTail(clockT, 0);
+    if (breathing) {
+      const b = Math.sin(clockT * 1.9) * .022;
+      catBody.scale.set(1 + b, 1 - b, 1 + b);
+      head.position.y = 1.62 + Math.sin(clockT * 1.9 + .5) * .02;
+      head.rotation.y = Math.sin(clockT * .4) * .18;
+    }
+    blink -= dt;
+    if (blink < 0) { blink = Kit.rnd(2, 5); doBlink(); }
+    return true;
+  });
+  function doBlink() {
+    const start = performance.now();
+    const d = 160;
+    const step = () => {
+      const k = (performance.now() - start) / d;
+      const s = k < .5 ? k * 2 : 2 - k * 2;
+      eyes.forEach(({ lid }) => { lid.scale.y = .1 + s * 1.0; lid.position.y = .26 - s * .18; });
+      if (k < 1) requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  let idling = true;
+  st.add(dt => {
+    if (!idling) return false;
+    st.look([Math.sin(clockT * .16) * 1.7, 2.35, 6.4], [0, 1.55, 0]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    breathing = true;
+    idling = true;
+    catBody.position.set(0, 0, 0);
+    catBody.rotation.set(0, 0, 0);
+    catBody.scale.set(1, 1, 1);
+    head.rotation.set(0, 0, 0);
+    head.position.set(0, 1.62, .18);
+    mouth.scale.setScalar(.01);
+    hairball.visible = false;
+    note.visible = false;
+    note.scale.setScalar(1);
+  }
+
+  /* ---------- the run ---------- */
+  async function heave(i, api) {
+    SFX.retch(i);
+    const amp = .35 + i * .2;
+    await Kit.tween(.34, t => {
+      const k = Math.sin(t * Math.PI);
+      catBody.scale.set(1 + k * .16 * amp, 1 - k * .22 * amp, 1 + k * .16 * amp);
+      catBody.position.z = k * .18 * amp;
+      head.rotation.x = k * .95 * amp;
+      head.position.y = 1.62 - k * .3 * amp;
+      head.position.z = .18 + k * .3 * amp;
+      mouth.scale.setScalar(.01 + k * (.7 + i * .22));
+    }, 'inOutQuad');
+    await Kit.tween(.26, t => {
+      const k = 1 - t;
+      catBody.scale.set(1 + k * .06, 1 - k * .08, 1 + k * .06);
+      catBody.position.z = k * .05;
+      head.rotation.x = k * .25;
+      head.position.y = 1.62 - k * .08;
+      head.position.z = .18 + k * .08;
+      mouth.scale.setScalar(.01 + k * .25);
+    }, 'outQuad');
+    if (i >= 1) st.shake(.04 + i * .02, .86);
+  }
+
+  async function run(winner, api) {
+    idling = false;
+    noteTex.draw(winner);
+
+    const cam = Kit.chase(st, { rate: 2.6 });
+    cam.to([1.4, 1.9, 5.4], [0, 1.35, 0]);
+    api.caption('The cat is thinking about something.');
+    SFX.purr(2.2);
+    await Kit.tween(1.5, t => {
+      cam.to([1.4 - t * 1.2, 1.9 - t * .1, 5.4 - t * 1.9], [0, 1.35, 0]);
+      head.rotation.y = Math.sin(clockT * .5) * .2 * (1 - t);
+    }, 'inOutQuad');
+
+    breathing = false;
+    api.caption('Oh no.');
+    await Kit.wait(320);
+    SFX.meow(1.15);
+    await Kit.wait(420);
+
+    api.caption('OH NO');
+    for (let i = 0; i < 4; i++) {
+      await heave(i, api);
+      await Kit.wait(180 - i * 40);
+    }
+
+    /* the launch */
+    api.caption(null);
+    SFX.retch(4);
+    await Kit.tween(.22, t => {
+      catBody.scale.set(1 + t * .3, 1 - t * .34, 1 + t * .3);
+      head.rotation.x = t * 1.5;
+      head.position.z = .18 + t * .45;
+      head.position.y = 1.62 - t * .42;
+      mouth.scale.setScalar(.01 + t * 1.25);
+    }, 'inQuad');
+
+    SFX.squelch(.6);
+    SFX.splat(.35);
+    st.shake(.2, .88);
+
+    const origin = new THREE.Vector3(0, 1.18, .95);
+    hairball.position.copy(origin);
+    hairball.scale.setScalar(.4);
+    hairball.visible = true;
+    Kit.puffs(st, { origin, count: 16, color: 0x9ade4e, speed: 3.5, dir: new THREE.Vector3(0, .3, 1), sizeMin: .3, sizeMax: .9, life: .9, gravity: -1.5, additive: false, opacity: .7 });
+
+    const land = new THREE.Vector3(0, .22, 3.1);
+    await Kit.tween(.95, t => {
+      hairball.position.x = origin.x + (land.x - origin.x) * t;
+      hairball.position.z = origin.z + (land.z - origin.z) * t;
+      hairball.position.y = origin.y + (land.y - origin.y) * t + Math.sin(t * Math.PI) * 1.55;
+      hairball.rotation.x -= .38; hairball.rotation.z += .21;
+      hairball.scale.setScalar(.4 + t * .6);
+      cam.to([2.6 - t * .6, 2.4 - t * .5, 4.2 + t * 1.6], [hairball.position.x, hairball.position.y + .2, hairball.position.z - .4], 5);
+      // recoil
+      catBody.scale.lerp(new THREE.Vector3(1, 1, 1), .12);
+      head.rotation.x *= .88;
+      head.position.z += (.18 - head.position.z) * .12;
+      head.position.y += (1.62 - head.position.y) * .12;
+      mouth.scale.multiplyScalar(.86);
+    }, 'linear');
+
+    /* SPLAT */
+    SFX.splat(.7);
+    st.shake(.22, .87);
+    Kit.burst(st, { origin: land.clone(), count: 40, color: 0x7fc23f, size: .09, speed: 4.2, gravity: -12, life: 1.5, floor: .04, bounce: .1 });
+    Kit.puffs(st, { origin: land.clone(), count: 14, color: 0xa8e85c, speed: 2.2, sizeMin: .5, sizeMax: 1.5, life: 1.2, gravity: .4, additive: false, opacity: .55 });
+    // a permanent-looking stain
+    const stain = new THREE.Mesh(new THREE.CircleGeometry(.62, 24),
+      new THREE.MeshStandardMaterial({ color: 0x6d9c33, roughness: .3, transparent: true, opacity: .8 }));
+    stain.rotation.x = -Math.PI / 2;
+    stain.position.set(land.x, .035, land.z);
+    stain.scale.setScalar(.01);
+    S.add(stain);
+    Kit.tween(.4, t => stain.scale.setScalar(t * 1.1), 'outBack');
+
+    await Kit.tween(.3, t => {
+      hairball.position.y = .22 - t * .08;
+      hairball.scale.set(1 + t * .35, 1 - t * .45, 1 + t * .35);
+    }, 'outQuad');
+
+    api.caption('Something is in there.');
+    SFX.meow(.85);
+    await Kit.wait(350);
+
+    /* unfurl */
+    note.position.set(land.x, .06, land.z);
+    note.rotation.set(-Math.PI / 2, 0, Kit.rnd(-.2, .2));
+    note.scale.setScalar(.05);
+    note.visible = true;
+    SFX.squelch(.5);
+    await Kit.tween(.9, t => {
+      note.scale.setScalar(.05 + t * .95);
+      hairball.scale.setScalar(Math.max(.001, 1.35 * (1 - t)));
+      cam.to([t * .2, 2.9 - t * .8, 4.7 - t * .35], [land.x, .1, land.z - t * .35], 3.5);
+    }, 'outBack');
+    hairball.visible = false;
+    SFX.ding(760);
+    await Kit.tween(1.0, t => {
+      cam.to([.2 - t * .2, 2.1 - t * .22, 4.35 - t * .3], [land.x, .06, land.z - .35], 3);
+    }, 'inOutQuad');
+    await Kit.wait(700);
+    cam.stop();
+  }
+
+  Picker.init({
+    title: 'Hairball Roulette',
+    accent: '#8fd14a',
+    accent2: '#ff9bb0',
+    kicker: 'Coughed up by the cat',
+    tagline: 'The office cat has eaten the roster. Biology takes it from here.',
+    goLabel: 'Feed the cat',
+    againLabel: 'Again, cat',
+    verdict: n => `${n} was recovered from the rug, slightly damp. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

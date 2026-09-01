@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Launch Failure</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.2, far: 4000 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#050a20'], [.4, '#1b2f63'], [.68, '#7a5a9a'], [.86, '#e08a6a'], [1, '#ffc98a']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0x6a5f8a, 60, 320);
+
+  S.add(new THREE.AmbientLight(0xbcc6ff, 0.85));
+  S.add(new THREE.HemisphereLight(0xffd9b0, 0x2a2440, 0.9));
+  const sun = new THREE.DirectionalLight(0xffd9b0, 2.4);
+  sun.position.set(24, 16, 26);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -26; sun.shadow.camera.right = 26;
+  sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -6;
+  sun.shadow.camera.far = 120;
+  S.add(sun);
+
+  /* ---------- the complex ---------- */
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900),
+    new THREE.MeshStandardMaterial({ color: 0x6d6a72, roughness: .95 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  S.add(ground);
+  for (let i = 0; i < 22; i++) {                       // distant hangars & hills
+    const h = Kit.rnd(3, 9);
+    const b = Kit.box(Kit.rnd(8, 22), h, Kit.rnd(8, 16), 0x4a4a58, { roughness: 1 });
+    b.position.set(Kit.rnd(-160, 160), h / 2, Kit.rnd(-190, -70));
+    S.add(b);
+  }
+
+  const SPACING = 3.0;
+  function rocketTexture(name) {
+    const [c, x] = Kit.makeCanvas(1024, 512);
+    x.fillStyle = '#f4f5f8'; x.fillRect(0, 0, 1024, 512);
+    x.fillStyle = '#d9202c'; x.fillRect(0, 0, 1024, 46); x.fillRect(0, 466, 1024, 46);
+    x.fillStyle = '#1c2740'; x.fillRect(0, 76, 1024, 12); x.fillRect(0, 424, 1024, 12);
+    x.save();
+    x.translate(512, 256);
+    x.rotate(Math.PI / 2);                              // read it down the fuselage
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    let size = 190;
+    do { x.font = `bold ${size}px Impact, 'Arial Black', sans-serif`; size -= 4; }
+    while (x.measureText(name.toUpperCase()).width > 300 && size > 20);
+    x.fillStyle = '#1c2740';
+    x.fillText(name.toUpperCase(), 0, 0);
+    x.restore();
+    x.fillStyle = '#1c2740';
+    x.font = "bold 30px system-ui, sans-serif";
+    x.textAlign = 'center';
+    x.fillText('STANDUP AEROSPACE', 256, 150);
+    x.fillText('STANDUP AEROSPACE', 768, 150);
+    const t = Kit.texFromCanvas(c);
+    return t;
+  }
+
+  function makeRocket(name) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(.44, .5, 3.2, 28),
+      new THREE.MeshStandardMaterial({ map: rocketTexture(name), roughness: .35, metalness: .15 }));
+    body.position.y = 2.4;
+    body.castShadow = true;
+    g.add(body);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(.44, 1.25, 28),
+      new THREE.MeshStandardMaterial({ color: 0xd9202c, roughness: .3, metalness: .2 }));
+    nose.position.y = 4.6;
+    nose.castShadow = true;
+    g.add(nose);
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(.28, .52, .6, 20, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x3a3a48, roughness: .35, metalness: .8, side: THREE.DoubleSide }));
+    bell.position.y = .5;
+    g.add(bell);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(.08, 1.15, .9),
+        new THREE.MeshStandardMaterial({ color: 0xd9202c, roughness: .35 }));
+      fin.position.set(Math.cos(a) * .58, 1.35, Math.sin(a) * .58);
+      fin.rotation.y = -a;
+      fin.castShadow = true;
+      g.add(fin);
+    }
+    // launch pad
+    const pad = Kit.cyl(1.5, 1.7, .35, 0x3c3c46, 20, { roughness: .9 });
+    pad.position.y = .17;
+    pad.receiveShadow = true;
+    g.add(pad);
+    const tower = Kit.box(.22, 5.4, .22, 0x8a8a98, { roughness: .5, metalness: .5 });
+    tower.position.set(-1.1, 2.7, -.5);
+    g.add(tower);
+
+    // a pad sign, because a name painted down a distant fuselage is unreadable
+    const signTex = Kit.nameTexture(name, {
+      w: 620, h: 200, bg: '#0d1220', fg: '#ffd166', fill: .82,
+      border: '#ffd166', borderWidth: 10, radius: 8, shadow: '#ff8a3d', shadowBlur: 18
+    }).texture;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.05, .66),
+      new THREE.MeshStandardMaterial({ map: signTex, roughness: .6, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: .55 }));
+    sign.position.set(0, 1.0, 1.72);
+    g.add(sign);
+    [-.8, .8].forEach(sx => {
+      const post = Kit.box(.08, 1.0, .08, 0x5a5a66, { roughness: .7 });
+      post.position.set(sx, .5, 1.72);
+      g.add(post);
+    });
+
+    // exhaust
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: Kit.spark('rgba(255,236,180,1)', 'rgba(255,80,0,0)'),
+      blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0
+    }));
+    flame.scale.set(1.1, 2.2, 1);
+    flame.position.y = -.4;
+    g.add(flame);
+    const engineLight = new THREE.PointLight(0xff8830, 0, 16, 2);
+    engineLight.position.y = 0;
+    g.add(engineLight);
+
+    // the bits that get destroyed, as opposed to the pad and gantry
+    g.userData = { name, flame, engineLight, body, alive: true, parts: [body, nose, bell, ...g.children.filter(c => c.geometry && c.geometry.type === 'BoxGeometry' && c !== tower)] };
+    return g;
+  }
+
+  let rockets = [];
+  function buildRockets() {
+    rockets.forEach(r => S.remove(r));
+    const names = Roster.all();
+    rockets = names.map((n, i) => {
+      const r = makeRocket(n);
+      r.position.set((i - (names.length - 1) / 2) * SPACING, 0, 0);
+      S.add(r);
+      return r;
+    });
+  }
+  buildRockets();
+
+  /* ---------- display board ---------- */
+  const boardKit = Kit.nameTexture('T-00:10', {
+    w: 700, h: 240, bg: '#0a0d18', fg: '#6dff9b', fill: .8, shadow: '#3bff86', shadowBlur: 30,
+    border: '#2a3550', borderWidth: 14, radius: 8
+  });
+  const displayBoard = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.5),
+    new THREE.MeshStandardMaterial({ map: boardKit.texture, emissive: 0xffffff, emissiveMap: boardKit.texture, emissiveIntensity: .8, roughness: .6 }));
+  displayBoard.position.set(0, 3.0, 13);
+  displayBoard.rotation.y = Math.PI;
+  S.add(displayBoard);
+  const boardPost = Kit.box(.3, 3.0, .3, 0x4a4a58, { roughness: .8 });
+  boardPost.position.set(0, 1.5, 13.1);
+  S.add(boardPost);
+
+  /* ---------- state ---------- */
+  let tt = 0, idling = true;
+  st.add(dt => {
+    tt += dt;
+    rockets.forEach(r => {
+      const f = r.userData.flame;
+      if (f.material.opacity > .01) {
+        f.scale.x = 1.0 + Math.sin(tt * 30 + r.position.x) * .18;
+        f.scale.z = f.scale.x;
+      }
+    });
+    if (idling) {
+      const span = Math.max(10, rockets.length * SPACING);
+      st.look([Math.sin(tt * .15) * span * .34, 5.4, span * .95 + 6], [0, 2.6, 0]);
+    }
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    buildRockets();
+    boardKit.draw('T-00:10');
+    idling = true;
+  }
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    buildRockets();
+    const hero = rockets.find(r => r.userData.name === winner) || rockets[0];
+    const doomed = rockets.filter(r => r !== hero);
+    const span = Math.max(10, rockets.length * SPACING);
+
+    api.caption('All engines nominal. Allegedly.');
+    st.look([span * .3, 5.4, span * .95 + 6], [0, 2.6, 0]);
+    await Kit.tween(1.6, t => {
+      st.look([span * .3 - t * span * .3, 5.4 - t * 1.4, span * .95 + 6 - t * 3], [0, 2.6 - t * .3, 0]);
+    }, 'inOutQuad');
+
+    // countdown
+    for (let n = 5; n >= 1; n--) {
+      boardKit.draw('T-' + n);
+      SFX.countdown(n);
+      api.caption(String(n));
+      await Kit.wait(620);
+    }
+    boardKit.draw('IGNITION');
+    SFX.countdown(0);
+    api.caption('IGNITION');
+
+    // everyone lights up
+    SFX.rumble(3.2, .5);
+    const roar = SFX.drone({ noise: true, type: 'lowpass', freq: 320, gain: .22, rate: .7 });
+    st.shake(.16, .985);
+    await Kit.tween(1.0, t => {
+      rockets.forEach(r => {
+        r.userData.flame.material.opacity = t * .95;
+        r.userData.flame.scale.y = 1.2 + t * 1.6;
+        r.userData.engineLight.intensity = t * 40;
+        r.position.y = Math.sin(tt * 60 + r.position.x) * .02 * t;
+      });
+      st.look([0, 3.6, span * .8 + 2], [0, 2.4, 0]);
+    }, 'outQuad');
+    rockets.forEach(r => {
+      Kit.puffs(st, { origin: r.position.clone().setY(.3), count: 12, color: 0xcfcfd8, speed: 5, sizeMin: 1, sizeMax: 3, life: 3.2, gravity: 1.2, additive: false, opacity: .5, spread: 1 });
+    });
+
+    /* failures, one at a time */
+    api.caption('Anomaly detected.');
+    boardKit.draw('ANOMALY');
+    for (let i = doomed.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [doomed[i], doomed[j]] = [doomed[j], doomed[i]]; }
+    const gap = Math.max(230, Math.min(620, 3800 / Math.max(1, doomed.length)));
+
+    for (let i = 0; i < doomed.length; i++) {
+      const r = doomed[i];
+      const mode = Math.random();
+      r.userData.alive = false;
+      const org = r.position.clone().setY(2.2);
+      if (mode < .45) {
+        // detonate on the pad
+        SFX.explosion(.55);
+        st.shake(.25, .9);
+        Kit.burst(st, {
+          origin: org, count: 34, size: .2, speed: 10, gravity: -18, life: 2, floor: .2, jitter: .5,
+          material: new THREE.MeshStandardMaterial({ color: 0xd9202c, roughness: .5, metalness: .3 })
+        });
+        Kit.puffs(st, { origin: org, count: 16, color: 0xffb060, speed: 7, sizeMin: 1.2, sizeMax: 3.6, life: 1.4, gravity: 2.4 });
+        Kit.puffs(st, { origin: org, count: 10, color: 0x3a3540, speed: 4, sizeMin: 2, sizeMax: 6, life: 3, gravity: 1.4, additive: false, opacity: .6 });
+        r.userData.parts.forEach(p => { p.visible = false; });
+        r.userData.flame.material.opacity = 0;
+        r.userData.engineLight.intensity = 0;
+      } else if (mode < .78) {
+        // topple, majestically
+        SFX.thud(.4);
+        SFX.noise({ dur: .8, freq: 900, to: 180, gain: .2 });
+        const dir = Math.random() < .5 ? 1 : -1;
+        Kit.tween(1.1, t => {
+          r.rotation.z = -dir * Kit.ease.inQuad(t) * 1.55;
+          r.userData.flame.material.opacity = .95 * (1 - t);
+          r.userData.engineLight.intensity = 40 * (1 - t);
+        }, 'linear').then(() => {
+          SFX.explosion(.4);
+          st.shake(.18, .9);
+          Kit.puffs(st, { origin: r.position.clone().setY(.6).add(new THREE.Vector3(dir * 2.4, 0, 0)), count: 12, color: 0xffb060, speed: 6, sizeMin: 1, sizeMax: 3, life: 1.2, gravity: 2 });
+        });
+      } else {
+        // simply give up
+        SFX.sadTrombone();
+        Kit.tween(.9, t => {
+          r.userData.flame.material.opacity = .95 * (1 - t);
+          r.userData.flame.scale.y = 2.8 * (1 - t) + .2;
+          r.userData.engineLight.intensity = 40 * (1 - t);
+        }, 'outQuad');
+        Kit.puffs(st, { origin: r.position.clone().setY(.4), count: 8, color: 0x555560, speed: 1.6, sizeMin: .6, sizeMax: 2, life: 2.4, gravity: 1, additive: false, opacity: .5 });
+      }
+      api.caption(`${doomed.length - i} failure${doomed.length - i === 1 ? '' : 's'} to go`);
+      await Kit.wait(gap);
+    }
+
+    /* the survivor goes up */
+    api.caption(null);
+    boardKit.draw('LIFT-OFF');
+    SFX.explosion(.5);
+    SFX.rumble(4, .55);
+    roar.vol(.34, .3);
+    st.shake(.4, .96);
+    Kit.puffs(st, { origin: hero.position.clone().setY(.3), count: 40, color: 0xe8e8f0, speed: 9, sizeMin: 1.6, sizeMax: 5, life: 4, gravity: 1.6, additive: false, opacity: .55, spread: 1.2 });
+
+    let alt = 0;
+    await Kit.tween(4.2, (t, dt) => {
+      alt = Kit.ease.inQuad(t) * 210;
+      hero.position.y = alt;
+      hero.userData.flame.scale.y = 2.6 + t * 5;
+      hero.userData.flame.material.opacity = .95;
+      hero.userData.engineLight.intensity = 60;
+      hero.rotation.z = -t * .18;
+      if (Math.random() < .6) {
+        Kit.puffs(st, {
+          origin: hero.position.clone().setY(hero.position.y - 1), count: 2, color: 0xd8d8e4,
+          speed: 3, sizeMin: 1 + t * 3, sizeMax: 3 + t * 6, life: 3, gravity: .6, additive: false, opacity: .45
+        });
+      }
+      const back = 8 + t * t * 24;
+      st.look([2 + t * 3, Math.max(3.4, alt * .82 + 2), hero.position.z + back],
+              [hero.position.x, alt + 1.5, 0]);
+      roar.filterTo(320 - t * 200, .2);
+      roar.vol(Math.max(.02, .34 * (1 - t * .8)), .2);
+    }, 'linear');
+    roar.stop(.8);
+    SFX.tone({ freq: 200, to: 40, dur: 1.6, type: 'sine', gain: .2 });
+    api.caption('Cleared the tower.');
+    await Kit.wait(700);
+  }
+
+  Picker.init({
+    title: 'Launch Failure',
+    accent: '#ff6a3d',
+    accent2: '#6dff9b',
+    kicker: 'Only rocket to clear the tower',
+    tagline: 'Everyone gets a rocket. All of them are lit at once.',
+    goLabel: 'Begin countdown',
+    againLabel: 'Launch again',
+    verdict: n => `Every other vehicle was lost on the pad. ${n} made orbit, so ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

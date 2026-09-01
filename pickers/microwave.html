@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Microwave Meltdown</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 44, exposure: 1.15 });
+  const S = st.scene;
+
+  S.background = new THREE.Color(0x171420);
+  Kit.env(st, Kit.gradientSky([[0, '#3a3550'], [.6, '#6b6480'], [1, '#c9b79a']]));
+  S.fog = new THREE.Fog(0x171420, 12, 34);
+
+  S.add(new THREE.AmbientLight(0xc8bcff, 0.7));
+  S.add(new THREE.HemisphereLight(0xfff2d8, 0x241f33, 0.7));
+  const kitchenLight = new THREE.PointLight(0xffe0b0, 40, 22, 2);
+  kitchenLight.position.set(-1.5, 6, 4);
+  kitchenLight.castShadow = true;
+  kitchenLight.shadow.mapSize.set(1024, 1024);
+  S.add(kitchenLight);
+  const fill = new THREE.DirectionalLight(0x8fb0ff, 0.9);
+  fill.position.set(6, 4, 6);
+  S.add(fill);
+
+  /* ---------- kitchen ---------- */
+  const counter = Kit.box(16, .5, 5, 0x2f2a3a, { roughness: .25, metalness: .1 });
+  counter.position.set(0, -.25, 0);
+  counter.receiveShadow = true;
+  S.add(counter);
+  const counterEdge = Kit.box(16.2, .1, 5.2, 0x9a8f7a, { roughness: .35 });
+  counterEdge.position.set(0, .02, 0);
+  S.add(counterEdge);
+  const splashback = new THREE.Mesh(new THREE.PlaneGeometry(16, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3d3750, roughness: .35 }));
+  splashback.position.set(0, 4, -2.5);
+  splashback.receiveShadow = true;
+  S.add(splashback);
+  for (let i = -7; i <= 7; i++) {                     // tile grout
+    const l = Kit.box(.03, 8, .02, 0x2a2438, { roughness: .8 });
+    l.position.set(i * 1.1, 4, -2.48);
+    S.add(l);
+  }
+  const mug = Kit.cyl(.28, .24, .5, 0xd94f5c, 18, { roughness: .25 });
+  mug.position.set(3.4, .32, .9);
+  mug.castShadow = true;
+  S.add(mug);
+  const banana = Kit.cyl(.09, .09, 1.1, 0xf2d34a, 12, { roughness: .6 });
+  banana.rotation.set(0, .6, 1.4);
+  banana.position.set(-3.6, .18, .8);
+  S.add(banana);
+
+  /* ---------- the microwave ---------- */
+  const MW = { w: 4.6, h: 2.7, d: 3.0 };
+  const mw = new THREE.Group();
+  mw.position.set(0, .07, -.4);
+  S.add(mw);
+  const shellMat = { color: 0x20202c, roughness: .3, metalness: .55 };
+  // built as five panels rather than one box, so the cavity is actually visible
+  const CAV = { w: 3.0, h: 2.05, d: 2.5 };
+  const PANELS = [
+    [MW.w, MW.h, .16, 0, MW.h / 2, -MW.d / 2 + .08],              // back
+    [MW.w, .32, MW.d, 0, MW.h - .16, 0],                          // top
+    [MW.w, .32, MW.d, 0, .16, 0],                                 // bottom
+    [.3, MW.h, MW.d, -MW.w / 2 + .15, MW.h / 2, 0],               // left wall
+    [1.42, MW.h, MW.d, MW.w / 2 - .71, MW.h / 2, 0]               // control-panel side
+  ];
+  PANELS.forEach(([w, h, d, px, py, pz]) => {
+    const b = Kit.box(w, h, d, 0x20202c, shellMat);
+    b.position.set(px, py, pz);
+    b.castShadow = true; b.receiveShadow = true;
+    mw.add(b);
+  });
+  const cavity = new THREE.Mesh(new THREE.BoxGeometry(CAV.w, CAV.h, CAV.d),
+    new THREE.MeshStandardMaterial({ color: 0xd2d6de, roughness: .3, metalness: .55, side: THREE.BackSide }));
+  cavity.position.set(-.60, MW.h / 2, .06);
+  mw.add(cavity);
+  const cavityLight = new THREE.PointLight(0xffe9b0, 0, 9, 2);
+  cavityLight.position.set(-.60, MW.h / 2 + .55, .3);
+  mw.add(cavityLight);
+
+  // control panel
+  const panel = Kit.box(1.25, MW.h - .3, .06, 0x14141e, { roughness: .35, metalness: .3 });
+  panel.position.set(1.6, MW.h / 2, MW.d / 2 + .01);
+  mw.add(panel);
+  const displayKit = Kit.nameTexture('0:00', {
+    w: 400, h: 180, bg: '#08110c', fg: '#5dff9a', fill: .72, shadow: '#3bff86', shadowBlur: 26
+  });
+  const display = new THREE.Mesh(new THREE.PlaneGeometry(1.0, .45),
+    new THREE.MeshStandardMaterial({ map: displayKit.texture, emissive: 0xffffff, emissiveMap: displayKit.texture, emissiveIntensity: 1, roughness: .5 }));
+  display.position.set(1.6, MW.h - .55, MW.d / 2 + .05);
+  mw.add(display);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
+    const b = Kit.box(.24, .18, .05, 0x2c2c3c, { roughness: .5 });
+    b.position.set(1.26 + c * .34, MW.h - 1.15 - r * .28, MW.d / 2 + .05);
+    mw.add(b);
+  }
+  const startBtn = Kit.box(.86, .26, .06, 0x2fbf5a, { roughness: .3, emissive: 0x1a7a38, emissiveIntensity: .6 });
+  startBtn.position.set(1.6, .38, MW.d / 2 + .05);
+  mw.add(startBtn);
+
+  // the door
+  const door = new THREE.Group();
+  door.position.set(-2.28, MW.h / 2, MW.d / 2);       // hinge on the left edge
+  mw.add(door);
+  // a frame, not a panel — otherwise it just seals the cavity off from view
+  [[3.28, .24, 1.64, 1.17], [3.28, .24, 1.64, -1.17],
+   [.26, 2.58, .13, 0], [.56, 2.58, 3.0, 0]].forEach(([w, h, px, py]) => {
+    const bar = Kit.box(w, h, .12, 0x24242f, { roughness: .3, metalness: .5 });
+    bar.position.set(px, py, 0);
+    door.add(bar);
+  });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.5, MW.h - .82),
+    new THREE.MeshPhysicalMaterial({ color: 0x3d5246, roughness: .08, transparent: true, opacity: .18, side: THREE.DoubleSide }));
+  glass.position.set(1.64, 0, .08);
+  door.add(glass);
+  // the mesh grid you can never see through properly
+  for (let i = -6; i <= 6; i++) {
+    const v = Kit.box(.03, MW.h - .82, .02, 0x4a4a58, { roughness: .6 });
+    v.position.set(1.64 + i * .195, 0, .09);
+    door.add(v);
+    if (Math.abs(i) <= 4) {
+      const h = Kit.box(2.5, .03, .02, 0x4a4a58, { roughness: .6 });
+      h.position.set(1.64, i * .22, .09);
+      door.add(h);
+    }
+  }
+  const handle = Kit.box(.16, MW.h - .8, .3, 0x8a8a98, { roughness: .3, metalness: .8 });
+  handle.position.set(3.16, 0, .16);
+  door.add(handle);
+
+  /* ---------- turntable + contents ---------- */
+  const plate = Kit.cyl(1.15, 1.15, .06, 0xd8dde6, 40, { roughness: .1, metalness: .1, transparent: true, opacity: .8 });
+  plate.position.set(-.60, MW.h / 2 - .88, .06);
+  mw.add(plate);
+  const turntable = new THREE.Group();
+  turntable.position.copy(plate.position);
+  mw.add(turntable);
+
+  function tagTexture(name) {
+    return Kit.nameTexture(name, {
+      w: 512, h: 260, bg: '#f6efdc', fg: '#231a10', fill: .8,
+      border: '#231a10', borderWidth: 12, radius: 10
+    }).texture;
+  }
+  function makeBurrito(name) {
+    const g = new THREE.Group();
+    const foil = Kit.cyl(.19, .19, .78, 0xd6dae0, 14, { roughness: .18, metalness: .92, flatShading: true });
+    foil.rotation.z = Math.PI / 2;
+    g.add(foil);
+    [-1, 1].forEach(sx => {
+      const end = new THREE.Mesh(new THREE.ConeGeometry(.19, .22, 10),
+        new THREE.MeshStandardMaterial({ color: 0xc8ccd4, roughness: .2, metalness: .9, flatShading: true }));
+      end.rotation.z = -sx * Math.PI / 2;
+      end.position.x = sx * .5;
+      g.add(end);
+    });
+    const tag = new THREE.Mesh(new THREE.PlaneGeometry(.72, .36),
+      new THREE.MeshStandardMaterial({ map: tagTexture(name), roughness: .8, side: THREE.DoubleSide }));
+    tag.position.set(0, .3, 0);
+    tag.rotation.x = -.5;
+    g.add(tag);
+    g.userData = { name, tag };
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
+
+  let burritos = [];
+  function buildBurritos() {
+    burritos.forEach(b => turntable.remove(b));
+    const names = Roster.all();
+    burritos = names.map((n, i) => {
+      const b = makeBurrito(n);
+      const a = (i / names.length) * Math.PI * 2;
+      const r = names.length > 4 ? .72 : .4;
+      b.position.set(Math.cos(a) * r, .12, Math.sin(a) * r);
+      b.rotation.y = -a;
+      turntable.add(b);
+      return b;
+    });
+  }
+  buildBurritos();
+
+  /* ---------- sparks ---------- */
+  function arc(at) {
+    const p = new THREE.Vector3(
+      -.62 + Kit.rnd(-1.1, 1.1), MW.h / 2 - .7 + Kit.rnd(0, .9), .04 + Kit.rnd(-.9, .9));
+    Kit.puffs(st, { origin: p, count: 3, color: 0xbfe4ff, speed: 1.6, sizeMin: .12, sizeMax: .4, life: .35, gravity: 0 });
+    const l = new THREE.PointLight(0xaad8ff, 26, 5, 2);
+    l.position.copy(p);
+    mw.add(l);
+    setTimeout(() => mw.remove(l), 90);
+    SFX.zap();
+  }
+
+  /* ---------- state ---------- */
+  let tt = 0, idling = true, spinning = false;
+  st.add(dt => {
+    tt += dt;
+    if (spinning) turntable.rotation.y += dt * 1.1;
+    if (idling) st.look([Math.sin(tt * .16) * 3.0, 2.5, 8.0], [-.3, 1.35, 0]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    buildBurritos();
+    door.rotation.y = -1.25;
+    displayKit.draw('0:00');
+    cavityLight.intensity = 0;
+    spinning = false;
+    idling = true;
+  }
+  door.rotation.y = -1.25;                             // starts open
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    buildBurritos();
+    const chosen = burritos.find(b => b.userData.name === winner) || burritos[0];
+
+    st.look([2.8, 2.5, 8.0], [-.3, 1.35, 0]);
+    api.caption('Everyone in, then.');
+    await Kit.tween(1.3, t => {
+      st.look([2.8 - t * 2.4, 2.5 - t * .55, 8.0 - t * 1.6], [-.5, 1.4, 0]);
+    }, 'inOutQuad');
+
+    // shut the door, set the timer
+    SFX.noise({ dur: .3, freq: 700, to: 200, gain: .18 });
+    await Kit.tween(.55, t => { door.rotation.y = -1.25 * (1 - t); }, 'inQuad');
+    SFX.thud(.3);
+    SFX.click(.3);
+    for (const s of ['0:1', '0:12', '0:12']) { displayKit.draw(s); SFX.beep(880, .06); await Kit.wait(130); }
+    api.caption('Definitely not foil-safe.');
+    SFX.beep(660, .12);
+    displayKit.draw('0:12');
+    await Kit.wait(320);
+
+    // GO
+    const hum = SFX.drone({ type: 'sawtooth', freq: 58, gain: .09 });
+    const buzz = SFX.drone({ noise: true, type: 'bandpass', freq: 1100, Q: 4, gain: .05 });
+    spinning = true;
+    cavityLight.intensity = 34;
+    api.caption(null);
+
+    const secs = ['0:12', '0:11', '0:10', '0:09', '0:08', '0:07', '0:06', '0:05', '0:04', '0:03', '0:02', '0:01'];
+    let sparkRate = .6;
+    Kit.tween(4.4, t => {
+      cavityLight.intensity = 34 + Math.sin(t * 40) * 14 + t * 40;
+      cavityLight.color.setHSL(.12 - t * .1, .9, .55 + t * .2);
+      hum.node.frequency.value = 58 + t * 26;
+      buzz.vol(.05 + t * .1);
+      sparkRate = .6 + t * 5;
+    }, 'inQuad');
+
+    let sparkAcc = 0;
+    const sparker = dt => { sparkAcc += dt * sparkRate; while (sparkAcc > 1) { sparkAcc -= 1; arc(); } return true; };
+    st.add(sparker);
+
+    // One smooth push-in over the whole countdown. Driving the camera off the
+    // loop index made it hop to a new spot on every tick.
+    Kit.tween(4.3, t => {
+      st.look([.7 - t * 1.1, 1.8 + t * .25, 6.5 - t * 2.1], [-.6, 1.4 + t * .05, 0]);
+    }, 'inOutQuad');
+    for (let i = 0; i < secs.length; i++) {
+      displayKit.draw(secs[i]);
+      if (i % 2 === 0) SFX.beep(520, .05);
+      await Kit.wait(360 - i * 8);
+    }
+
+    /* ★ MELTDOWN ★ */
+    st.remove(sparker);
+    displayKit.draw('0:00');
+    SFX.explosion(.9);
+    SFX.glass();
+    SFX.rumble(2, .35);
+    st.shake(.75, .9);
+    cavityLight.intensity = 200;
+    cavityLight.color.set(0xffffff);
+    hum.stop(.1); buzz.stop(.1);
+
+    const mouth = new THREE.Vector3(-.4, 1.5, 2.2);
+    Kit.puffs(st, { origin: mouth, count: 40, color: 0xfff0c0, speed: 9, dir: new THREE.Vector3(0, .3, 1), spread: .7, sizeMin: 1, sizeMax: 3.4, life: 1.3, gravity: 1.6 });
+    Kit.puffs(st, { origin: mouth, count: 34, color: 0x54505e, speed: 6, dir: new THREE.Vector3(0, .5, 1), spread: .8, sizeMin: 1.6, sizeMax: 5, life: 3.4, gravity: 2, additive: false, opacity: .6 });
+    Kit.burst(st, {
+      origin: mouth, count: 46, size: .12, speed: 10, gravity: -16, life: 2, floor: .1, jitter: .4,
+      dir: new THREE.Vector3(0, .3, 1), spread: .9,
+      material: new THREE.MeshStandardMaterial({ color: 0xd6dae0, roughness: .2, metalness: .9, flatShading: true })
+    });
+
+    // door blows open, everything inside is gone
+    Kit.tween(.35, t => { door.rotation.y = -Kit.ease.outBack(t) * 1.9; }, 'linear');
+    burritos.forEach(b => { if (b !== chosen) b.visible = false; });
+    chosen.visible = false;
+    spinning = false;
+    Kit.tween(1.6, t => { cavityLight.intensity = 200 * (1 - t) + 14; }, 'outQuad');
+
+    // the one surviving name tag flutters out onto the counter
+    const tagTex = tagTexture(winner);
+    const card = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .75),
+      new THREE.MeshStandardMaterial({
+        map: tagTex, roughness: .85, side: THREE.DoubleSide,
+        emissive: 0x442200, emissiveIntensity: .35
+      }));
+    card.position.copy(mouth);
+    S.add(card);
+    api.caption('Something survived.');
+
+    const landing = new THREE.Vector3(.4, .1, 2.35);
+    await Kit.tween(2.0, t => {
+      card.position.x = mouth.x + (landing.x - mouth.x) * t;
+      card.position.z = mouth.z + (landing.z - mouth.z) * t;
+      card.position.y = mouth.y + (landing.y - mouth.y) * Kit.ease.inQuad(t) + Math.sin(t * Math.PI) * .8;
+      card.rotation.x = -Math.PI / 2 * Kit.ease.outCubic(t) + Math.sin(t * 11) * .8 * (1 - t);
+      card.rotation.z = Math.sin(t * 8) * .9 * (1 - t);
+      card.rotation.y = Math.sin(t * 6) * .5 * (1 - t);
+      st.look([-.4 + t * 1.1, 2.05 - t * .55, 4.4 + t * .5], [card.position.x * .6, card.position.y * .6 + .3, card.position.z * .6]);
+    }, 'linear');
+    card.rotation.set(-Math.PI / 2, 0, Kit.rnd(-.25, .25));
+    card.position.copy(landing);
+    SFX.ding(1120);
+    SFX.sizzle(1.2);
+
+    await Kit.tween(1.2, t => {
+      st.look([.7 - t * .3, 1.5 - t * .35, 4.9 - t * 1.3], [landing.x, .12, landing.z]);
+    }, 'inOutQuad');
+    await Kit.wait(650);
+  }
+
+  Picker.init({
+    title: 'Microwave Meltdown',
+    accent: '#ffb300',
+    accent2: '#5dff9a',
+    kicker: 'Pulled from the wreckage',
+    tagline: 'Twelve seconds on full power. Whatever is still legible speaks first.',
+    goLabel: 'Press start',
+    againLabel: 'Do it again',
+    verdict: n => `Only ${n}’s label came out readable. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

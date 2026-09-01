@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Alien Abduction</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.35, far: 800 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#02030d'], [.55, '#0b1436'], [.85, '#1d2a5e'], [1, '#39406f']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.FogExp2(0x0a1030, 0.012);
+
+  S.add(new THREE.AmbientLight(0x8092dd, 1.05));
+  S.add(new THREE.HemisphereLight(0x9fb0ff, 0x152238, 1.05));
+  const moonLight = new THREE.DirectionalLight(0xc0d4ff, 2.8);
+  moonLight.position.set(-16, 22, -18);
+  moonLight.castShadow = true;
+  moonLight.shadow.mapSize.set(2048, 2048);
+  moonLight.shadow.camera.left = -22; moonLight.shadow.camera.right = 22;
+  moonLight.shadow.camera.top = 22; moonLight.shadow.camera.bottom = -14;
+  S.add(moonLight);
+
+  const moon = new THREE.Mesh(new THREE.CircleGeometry(9, 40),
+    new THREE.MeshBasicMaterial({ color: 0xfdf6d8 }));
+  moon.position.set(-70, 42, -170);
+  S.add(moon);
+  (function stars() {
+    const pts = [];
+    for (let i = 0; i < 1200; i++) {
+      const v = new THREE.Vector3(Kit.rnd(-1, 1), Kit.rnd(.02, 1), Kit.rnd(-1, 1)).normalize().multiplyScalar(340);
+      pts.push(v.x, v.y, v.z);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    S.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.4 })));
+  })();
+
+  /* ---------- the field ---------- */
+  const field = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 40, 40),
+    new THREE.MeshStandardMaterial({ color: 0x35643f, roughness: 1 }));
+  field.rotation.x = -Math.PI / 2;
+  field.receiveShadow = true;
+  (function bumps(m) {
+    // barely-there undulation: anything taller swallows the cows and the camera
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i);
+      p.setZ(i, Math.sin(x * .04) * .12 + Math.cos(y * .05) * .1);
+    }
+    m.geometry.computeVertexNormals();
+  })(field);
+  S.add(field);
+
+  // grass tufts
+  const tuftGeo = new THREE.ConeGeometry(.09, .5, 4);
+  const tuftMat = new THREE.MeshStandardMaterial({ color: 0x467c4c, roughness: 1, flatShading: true });
+  const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 500);
+  const dm = new THREE.Object3D();
+  for (let i = 0; i < 500; i++) {
+    const a = Math.random() * 7, d = Kit.rnd(3, 40);
+    dm.position.set(Math.cos(a) * d, .2, Math.sin(a) * d);
+    dm.rotation.set(Kit.rnd(-.2, .2), Math.random() * 3, Kit.rnd(-.2, .2));
+    dm.scale.setScalar(Kit.rnd(.6, 1.5));
+    dm.updateMatrix();
+    tufts.setMatrixAt(i, dm.matrix);
+  }
+  S.add(tufts);
+
+  // barn + fence, for atmosphere
+  const barn = new THREE.Group();
+  barn.position.set(-17, 0, -13);
+  barn.rotation.y = .5;
+  S.add(barn);
+  const barnBody = Kit.box(9, 5, 6, 0x8f3030, { roughness: .9 });
+  barnBody.position.y = 2.5;
+  barn.add(barnBody);
+  const barnRoof = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 9.2, 3, 1),
+    new THREE.MeshStandardMaterial({ color: 0x5a2020, roughness: .9, flatShading: true }));
+  barnRoof.rotation.set(0, 0, Math.PI / 2);
+  barnRoof.position.y = 5.6;
+  barn.add(barnRoof);
+  const barnDoor = Kit.box(2.6, 3.2, .2, 0x2c1010, { roughness: .9 });
+  barnDoor.position.set(0, 1.6, 3.05);
+  barn.add(barnDoor);
+  for (let i = 0; i < 26; i++) {
+    const post = Kit.box(.16, 1.2, .16, 0x4a3a24, { roughness: 1 });
+    const a = (i / 26) * Math.PI * 2;
+    post.position.set(Math.cos(a) * 26, .6, Math.sin(a) * 26);
+    S.add(post);
+  }
+
+  /* ---------- the herd ---------- */
+  function signTexture(name) {
+    return Kit.nameTexture(name, {
+      w: 640, h: 320, bg: '#f7f2e2', fg: '#1a1a24', fill: .8,
+      border: '#1a1a24', borderWidth: 16, radius: 12
+    }).texture;
+  }
+  function makeCow(name) {
+    const g = new THREE.Group();
+    const hide = { color: 0xf2f1ec, roughness: .95 };
+    const body = Kit.box(2.0, 1.1, 1.0, 0xf2f1ec, hide);
+    body.position.y = 1.35;
+    g.add(body);
+    for (let i = 0; i < 5; i++) {                       // patches
+      const spot = Kit.ball(Kit.rnd(.16, .3), 0x22222c, 10, { roughness: 1 });
+      spot.scale.set(1, .7, .35);
+      const side = Math.random() < .5 ? 1 : -1;
+      spot.position.set(Kit.rnd(-.8, .8), 1.35 + Kit.rnd(-.35, .35), side * .5);
+      g.add(spot);
+    }
+    const head = Kit.box(.7, .62, .62, 0xf2f1ec, hide);
+    head.position.set(1.2, 1.6, 0);
+    g.add(head);
+    const snout = Kit.box(.36, .34, .4, 0xf0b7bd, { roughness: .8 });
+    snout.position.set(1.55, 1.44, 0);
+    g.add(snout);
+    [-1, 1].forEach(sz => {
+      const ear = Kit.box(.14, .24, .1, 0xf2f1ec, hide);
+      ear.position.set(1.14, 1.82, sz * .34);
+      g.add(ear);
+      const horn = Kit.cyl(.05, .07, .22, 0xd8cfae, 8, { roughness: .7 });
+      horn.position.set(1.24, 1.98, sz * .2);
+      g.add(horn);
+      const eye = Kit.ball(.07, 0x14141c, 10, { roughness: .2 });
+      eye.position.set(1.44, 1.68, sz * .22);
+      g.add(eye);
+    });
+    [[-.65, .35], [-.65, -.35], [.65, .35], [.65, -.35]].forEach(([lx, lz]) => {
+      const leg = Kit.cyl(.14, .14, .82, 0xf2f1ec, 10, hide);
+      leg.position.set(lx, .43, lz);
+      g.add(leg);
+      const hoof = Kit.cyl(.15, .15, .16, 0x22222c, 10, { roughness: .8 });
+      hoof.position.set(lx, .08, lz);
+      g.add(hoof);
+    });
+    const tail = Kit.cyl(.05, .03, .9, 0xf2f1ec, 8, hide);
+    tail.position.set(-1.05, 1.2, 0);
+    tail.rotation.z = .35;
+    g.add(tail);
+    const udder = Kit.ball(.28, 0xf0b7bd, 12, { roughness: .8 });
+    udder.scale.set(1, .7, .8);
+    udder.position.set(-.15, .82, 0);
+    g.add(udder);
+
+    // the all-important name board, hung on the flank
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .75),
+      new THREE.MeshStandardMaterial({ map: signTexture(name), roughness: .8, side: THREE.DoubleSide }));
+    sign.position.set(-.05, 1.28, .53);
+    g.add(sign);
+    const sign2 = sign.clone();
+    sign2.position.z = -.53;
+    sign2.rotation.y = Math.PI;
+    g.add(sign2);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    g.userData = { name, sign };
+    return g;
+  }
+
+  let cows = [];
+  function buildCows() {
+    cows.forEach(c => S.remove(c));
+    const names = Roster.all();
+    cows = names.map((n, i) => {
+      const c = makeCow(n);
+      const a = (i / names.length) * Math.PI * 2 + .4;
+      const r = 6.5 + (i % 2) * 2.2;
+      c.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      c.rotation.y = -a + Math.PI / 2 + Kit.rnd(-.4, .4);
+      c.userData.home = c.position.clone();
+      S.add(c);
+      return c;
+    });
+  }
+  buildCows();
+
+  /* ---------- the ship ---------- */
+  const ufo = new THREE.Group();
+  ufo.position.set(0, 46, 0);
+  S.add(ufo);
+  const hull = new THREE.Mesh(new THREE.SphereGeometry(4.2, 36, 18),
+    new THREE.MeshStandardMaterial({ color: 0x9aa6bd, roughness: .18, metalness: .95 }));
+  hull.scale.set(1, .26, 1);
+  hull.castShadow = true;
+  ufo.add(hull);
+  const underside = new THREE.Mesh(new THREE.SphereGeometry(3.0, 30, 14),
+    new THREE.MeshStandardMaterial({ color: 0x2b3350, roughness: .3, metalness: .8 }));
+  underside.scale.set(1, .35, 1);
+  underside.position.y = -.55;
+  ufo.add(underside);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(1.9, 28, 16, 0, 6.3, 0, 1.6),
+    new THREE.MeshPhysicalMaterial({ color: 0x7ff5d8, roughness: .05, metalness: 0, transparent: true, opacity: .5, emissive: 0x1d6f63, emissiveIntensity: .6 }));
+  dome.position.y = .5;
+  ufo.add(dome);
+  const pilot = Kit.ball(.55, 0x8ef0a8, 18, { roughness: .5, emissive: 0x2f7a45, emissiveIntensity: .5 });
+  pilot.scale.set(1, 1.25, .9);
+  pilot.position.y = 1.0;
+  ufo.add(pilot);
+  [-1, 1].forEach(sx => {
+    const eye = Kit.ball(.16, 0x0b0f12, 10, { roughness: .05 });
+    eye.scale.set(1, 1.5, .6);
+    eye.position.set(sx * .2, 1.15, .48);
+    ufo.add(eye);
+  });
+
+  const rimLights = [];
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const l = Kit.ball(.26, 0xffffff, 12, { emissive: 0xffffff, emissiveIntensity: 3, roughness: .3 });
+    l.position.set(Math.cos(a) * 3.75, -.45, Math.sin(a) * 3.75);
+    ufo.add(l);
+    rimLights.push(l);
+  }
+  const shipGlow = new THREE.PointLight(0x86ffe0, 0, 60, 2);
+  shipGlow.position.y = -1;
+  ufo.add(shipGlow);
+
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0x8dfbe0, transparent: true, opacity: 0, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, 5.2, 1, 40, 1, true), beamMat);
+  S.add(beam);
+  // The beam is always a vertical cone hanging from the saucer's underside, so it
+  // can only ever be centred on the ship. Aiming it = flying the ship there.
+  let beamR = 2.4;
+  function updateBeam() {
+    const h = Math.max(.01, ufo.position.y - 1 - .05);
+    beam.geometry.dispose();
+    beam.geometry = new THREE.CylinderGeometry(1.5, beamR, h, 40, 1, true);
+    beam.position.set(ufo.position.x, .05 + h / 2, ufo.position.z);
+  }
+
+  /* ---------- state ---------- */
+  let tt = 0, idling = true;
+  st.add(dt => {
+    tt += dt;
+    ufo.rotation.y += dt * .55;
+    if (beamMat.opacity > .001) updateBeam();
+    rimLights.forEach((l, i) => {
+      const k = (Math.sin(tt * 5 - i * .6) + 1) / 2;
+      l.material.emissiveIntensity = .4 + k * 4;
+      l.material.color.setHSL((i / 14 + tt * .1) % 1, .9, .6);
+      l.material.emissive.copy(l.material.color);
+    });
+    cows.forEach((c, i) => {
+      if (c.userData.taken) return;
+      c.position.y = Math.sin(tt * 1.6 + i) * .03;
+      c.rotation.z = Math.sin(tt * 1.1 + i * .7) * .015;
+    });
+    if (idling) st.look([Math.sin(tt * .14) * 16, 6.5, 20], [0, 2.2, 0]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    buildCows();
+    ufo.position.set(0, 46, 0);
+    beamMat.opacity = 0;
+    shipGlow.intensity = 0;
+    idling = true;
+  }
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    buildCows();
+    const target = cows.find(c => c.userData.name === winner) || cows[0];
+
+    st.look([14, 6.5, 20], [0, 2.2, 0]);
+    api.caption('A quiet night in the field.');
+    await Kit.tween(1.2, t => {
+      st.look([14 - t * 5, 6.5 - t * 2.2, 20 - t * 3], [0, 2.2 + t * 1.2, 0]);
+    }, 'inOutQuad');
+
+    // descent
+    api.caption('Something is coming down.');
+    const hum = SFX.drone({ type: 'sine', freq: 42, gain: .0 });
+    hum.vol(.16, .8);
+    SFX.tone({ freq: 90, to: 260, dur: 2.4, type: 'sine', gain: .07 });
+    await Kit.tween(2.4, t => {
+      ufo.position.y = 46 - t * 32;
+      shipGlow.intensity = t * 60;
+      hum.node.frequency.value = 42 + t * 34;
+      st.look([9 - t * 2, 4.3 + t * 1.6, 17 + t * 2], [0, 4 + t * 4, 0]);
+    }, 'inOutCubic');
+
+    // scanning — the ship flies over each candidate, camera trails it smoothly
+    api.caption('Scanning livestock.');
+    beamMat.opacity = .18;
+    const scanOrder = [];
+    for (let i = 0; i < 4; i++) scanOrder.push(cows[Math.floor(Math.random() * cows.length)]);
+    scanOrder.push(target);
+
+    // a damped chase camera: it is never told to jump, only where to aim for
+    const cam = Kit.chase(st, { rate: 4 });
+    const wantPos = new THREE.Vector3(7, 5.9, 19), wantAim = new THREE.Vector3(0, 3, 0);
+    const aimCam = () => cam.to(wantPos.toArray(), wantAim.toArray());
+
+    for (let i = 0; i < scanOrder.length; i++) {
+      const c = scanOrder[i];
+      const last = i === scanOrder.length - 1;
+      SFX.tone({ freq: 620 + i * 90, dur: .1, type: 'square', gain: .1 });
+      const from = new THREE.Vector2(ufo.position.x, ufo.position.z);
+      const to = new THREE.Vector2(c.position.x, c.position.z);
+      wantPos.set(c.position.x * .45 + 7.5, 6.2, c.position.z * .45 + 13.5);
+      wantAim.set(c.position.x * .7, 3.2, c.position.z * .7);
+      aimCam();
+      await Kit.tween(last ? .85 : .55, t => {
+        ufo.position.x = from.x + (to.x - from.x) * t;
+        ufo.position.z = from.y + (to.y - from.y) * t;
+        beamR = 2.4;
+        beamMat.opacity = .16 + (last ? t * .3 : Math.sin(t * Math.PI) * .1);
+      }, 'inOutCubic');
+      if (!last) await Kit.wait(120);
+    }
+
+    // lock on
+    api.caption(null);
+    SFX.laser();
+    SFX.tone({ freq: 200, to: 900, dur: .6, type: 'sawtooth', gain: .12, filter: 'lowpass', filterFreq: 1400 });
+    wantPos.set(target.position.x * .5 + 6.5, 5.4, target.position.z * .5 + 11.5);
+    wantAim.set(target.position.x, 3.4, target.position.z);
+    aimCam();
+    await Kit.tween(.6, t => {
+      beamMat.opacity = .46 + t * .1;
+      beamR = 2.6 + t * .5;
+    }, 'outQuad');
+
+    // up she goes
+    api.caption('Cow acquired.');
+    SFX.meow(.45);
+    SFX.tone({ freq: 150, to: 105, dur: 1.1, type: 'sawtooth', gain: .16, filter: 'lowpass', filterFreq: 500 });
+    target.userData.taken = true;
+    const start = target.position.clone();
+    const cowSpin = target.rotation.y;
+    Kit.puffs(st, { origin: start.clone().setY(.3), count: 22, color: 0x8dfbe0, speed: 3, dir: new THREE.Vector3(0, 1, 0), sizeMin: .3, sizeMax: 1.1, life: 2.4, gravity: 3.5 });
+    await Kit.tween(2.8, t => {
+      const h = Kit.ease.inQuad(t) * (ufo.position.y - 2.2);
+      target.position.y = start.y + h;
+      target.position.x = start.x + (ufo.position.x - start.x) * t;
+      target.position.z = start.z + (ufo.position.z - start.z) * t;
+      target.rotation.y = cowSpin + t * 11;
+      target.rotation.z = Math.sin(t * 7) * .5 * t;
+      target.rotation.x = Math.sin(t * 5) * .35 * t;
+      beamMat.opacity = .5 - t * .08;
+      beamR = 2.6 + Math.sin(t * 9) * .25;
+      wantPos.set(target.position.x + 4.6, 2.4 + h * .8, target.position.z + 7.6);
+      wantAim.set(target.position.x, 1.4 + h * .92, target.position.z);
+      aimCam();
+      if (Math.random() < .25) SFX.bubble(0);
+    }, 'linear');
+
+    // swallowed, then gone
+    SFX.zap();
+    SFX.tone({ freq: 900, to: 120, dur: .5, type: 'sawtooth', gain: .16 });
+    target.visible = false;
+    Kit.puffs(st, { origin: ufo.position.clone().setY(ufo.position.y - 1.4), count: 26, color: 0x8dfbe0, speed: 5, sizeMin: .5, sizeMax: 2.2, life: 1.2, gravity: 0 });
+    st.shake(.28, .9);
+    await Kit.tween(.5, t => { beamMat.opacity = .36 * (1 - t); }, 'outQuad');
+
+    // the sign flutters back down
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .75),
+      new THREE.MeshStandardMaterial({ map: signTexture(winner), roughness: .8, side: THREE.DoubleSide, emissive: 0x2a4a44, emissiveIntensity: .5 }));
+    sign.position.copy(ufo.position).setY(ufo.position.y - 2.2);
+    S.add(sign);
+    api.caption('It dropped something.');
+    hum.node.frequency.setTargetAtTime(160, SFX.ctx().currentTime, .6);
+    Kit.tween(2.2, t => {
+      ufo.position.y = 14 + t * 90;
+      ufo.position.x += t * .4;
+      shipGlow.intensity = 60 * (1 - t);
+    }, 'inCubic').then(() => hum.stop(.4));
+    SFX.whoosh(1.4, .25);
+
+    const landing = new THREE.Vector3(target.position.x * .55, .14, target.position.z * .55 + 2.2);
+    const signStart = sign.position.clone();
+    await Kit.tween(2.6, t => {
+      sign.position.x = signStart.x + (landing.x - signStart.x) * Kit.ease.outQuad(t);
+      sign.position.z = signStart.z + (landing.z - signStart.z) * Kit.ease.outQuad(t);
+      sign.position.y = signStart.y + (landing.y - signStart.y) * Kit.ease.inQuad(t);
+      sign.rotation.x = -Math.PI / 2 * Kit.ease.outCubic(t) + Math.sin(t * 12) * .5 * (1 - t);
+      sign.rotation.z = Math.sin(t * 9) * .6 * (1 - t);
+      wantPos.set(landing.x + 3.2, 5.6 - t * 3.2, landing.z + 6.4 - t * 2.0);
+      wantAim.set(landing.x, Math.max(.35, sign.position.y * .5), landing.z);
+      aimCam();
+    }, 'linear');
+    sign.position.copy(landing);
+    sign.rotation.set(-Math.PI / 2, 0, Kit.rnd(-.3, .3));
+    SFX.thud(.2);
+    SFX.ding(1040);
+    await Kit.tween(1.4, t => {
+      wantPos.set(landing.x + .9, 2.35 - t * .55, landing.z + 4.4 - t * 1.5);
+      wantAim.set(landing.x, .2, landing.z);
+      aimCam();
+    }, 'inOutQuad');
+    await Kit.wait(700);
+    cam.stop();
+  }
+
+  Picker.init({
+    title: 'Alien Abduction',
+    accent: '#8dfbe0',
+    accent2: '#c9a0ff',
+    kicker: 'Taken by the mothership',
+    tagline: 'Your colleagues are cows. The saucer only has room for one.',
+    goLabel: 'Send the saucer',
+    againLabel: 'Abduct another',
+    verdict: n => `${n} was taken up into the ship and has agreed to give the update. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

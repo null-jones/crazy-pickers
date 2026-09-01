@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shark Tank</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.2, far: 600 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#0a2740'], [.42, '#1d6f8f'], [.68, '#63c6c8'], [.86, '#ffd28a'], [1, '#ff9a5c']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0x7fc0cc, 40, 210);
+
+  S.add(new THREE.AmbientLight(0xbfe8ff, 0.8));
+  S.add(new THREE.HemisphereLight(0xfff0d0, 0x0d4a63, 0.9));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+  sun.position.set(-24, 20, -14);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -22; sun.shadow.camera.right = 22;
+  sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -22;
+  S.add(sun);
+
+  /* ---------- the sea ---------- */
+  const SEA = 260, SEG = 90;
+  const seaGeo = new THREE.PlaneGeometry(SEA, SEA, SEG, SEG);
+  seaGeo.rotateX(-Math.PI / 2);
+  const seaMat = new THREE.MeshStandardMaterial({
+    color: 0x1786a8, roughness: .12, metalness: .35, transparent: true, opacity: .93
+  });
+  const sea = new THREE.Mesh(seaGeo, seaMat);
+  sea.receiveShadow = true;
+  S.add(sea);
+  const basePos = seaGeo.attributes.position.array.slice();
+  function waveAt(x, z, t) {
+    return Math.sin(x * .18 + t * 1.5) * .18 + Math.sin(z * .23 - t * 1.1) * .15 + Math.sin((x + z) * .09 + t * .7) * .22;
+  }
+  // a darker deep beneath, so the shark reads as a shadow before it strikes
+  const deep = new THREE.Mesh(new THREE.PlaneGeometry(SEA, SEA),
+    new THREE.MeshBasicMaterial({ color: 0x05364c }));
+  deep.rotation.x = -Math.PI / 2;
+  deep.position.y = -6;
+  S.add(deep);
+
+  /* ---------- surfboards with names ---------- */
+  function boardTexture(name) {
+    const cols = [['#ff5a5f', '#fff3e0'], ['#ffd166', '#25313d'], ['#7cff9b', '#123c2a'], ['#8ecbff', '#123049'], ['#ff9de2', '#3a0f33']];
+    const [bg, fg] = cols[Math.floor(Math.random() * cols.length)];
+    return Kit.nameTexture(name, {
+      w: 900, h: 300, bg, fg, fill: .78,
+      after(x, w, h) {
+        x.strokeStyle = fg; x.globalAlpha = .35; x.lineWidth = 8;
+        x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
+        x.globalAlpha = 1;
+      }
+    }).texture;
+  }
+  function makeBoard(name) {
+    const g = new THREE.Group();
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 1.55); shape.bezierCurveTo(.62, .7, .62, -.7, 0, -1.6);
+    shape.bezierCurveTo(-.62, -.7, -.62, .7, 0, 1.55);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: .11, bevelEnabled: true, bevelSize: .05, bevelThickness: .04, bevelSegments: 2, curveSegments: 20 });
+    geo.rotateX(-Math.PI / 2);
+    geo.center();
+    const board = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xfdf6e8, roughness: .25, metalness: .05 }));
+    board.castShadow = true;
+    g.add(board);
+    // bake the rotation into the geometry so the name reads along the board
+    const lg = new THREE.PlaneGeometry(2.5, .85);
+    lg.rotateX(-Math.PI / 2);
+    lg.rotateY(Math.PI / 2);
+    const label = new THREE.Mesh(lg,
+      new THREE.MeshStandardMaterial({ map: boardTexture(name), roughness: .35, transparent: true }));
+    label.position.y = .12;
+    g.add(label);
+    const stripe = Kit.box(.1, .04, 3.0, 0xff5a5f, { roughness: .4 });
+    stripe.position.y = .07;
+    g.add(stripe);
+    g.userData.name = name;
+    return g;
+  }
+
+  let boards = [];
+  function buildBoards() {
+    boards.forEach(b => S.remove(b));
+    const names = Roster.all();
+    boards = names.map((n, i) => {
+      const b = makeBoard(n);
+      const a = (i / names.length) * Math.PI * 2;
+      b.userData.a = a;
+      b.userData.r = 7.5;
+      S.add(b);
+      return b;
+    });
+  }
+  buildBoards();
+
+  /* ---------- the shark ---------- */
+  const shark = new THREE.Group();
+  S.add(shark);
+  const GREY = 0x5d7a8c, WHITE = 0xe8eef2;
+  const sBody = Kit.ball(1, GREY, 28, { roughness: .5, metalness: .05 });
+  sBody.scale.set(1.05, .95, 3.1);
+  shark.add(sBody);
+  const sBelly = Kit.ball(.9, WHITE, 24, { roughness: .55 });
+  sBelly.scale.set(.92, .58, 2.7);
+  sBelly.position.y = -.3;
+  shark.add(sBelly);
+  // Underslung snout with a hinged lower jaw. The old version was a cone of
+  // teeth in a full ring, which read as a lamprey rather than a shark.
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(.9, 2.2, 22),
+    new THREE.MeshStandardMaterial({ color: GREY, roughness: .5 }));
+  snout.rotation.x = Math.PI / 2;
+  snout.position.set(0, .24, 3.15);
+  snout.scale.set(1.0, 1, .8);
+  shark.add(snout);
+
+  const toothMat = new THREE.MeshStandardMaterial({ color: 0xfffdf5, roughness: .3 });
+  const ARC_R = .74, ARC_Z = 2.4, ARC_SPAN = 1.2;
+  function toothArc(parent, y, pointDown, pivot) {
+    for (let i = 0; i < 11; i++) {
+      const a = -ARC_SPAN + (i / 10) * ARC_SPAN * 2;
+      const t = new THREE.Mesh(new THREE.ConeGeometry(.075, .27, 6), toothMat);
+      t.position.set(Math.sin(a) * ARC_R - pivot.x, y - pivot.y, ARC_Z + Math.cos(a) * ARC_R - pivot.z);
+      t.rotation.x = pointDown ? Math.PI : 0;
+      t.rotation.z = Math.sin(a) * .3 * (pointDown ? -1 : 1);
+      parent.add(t);
+    }
+  }
+  const ORIGIN = { x: 0, y: 0, z: 0 };
+  toothArc(shark, -.16, true, ORIGIN);              // upper jaw, fixed to the skull
+
+  const gullet = Kit.ball(1, 0x7d2534, 20, { roughness: .7 });
+  gullet.scale.set(.66, .26, .62);
+  gullet.position.set(0, -.34, 2.55);
+  shark.add(gullet);
+
+  const JAW_PIVOT = { x: 0, y: -.5, z: 1.95 };
+  const jaw = new THREE.Group();
+  jaw.position.set(JAW_PIVOT.x, JAW_PIVOT.y, JAW_PIVOT.z);
+  shark.add(jaw);
+  const lowerJaw = Kit.ball(1, WHITE, 20, { roughness: .55 });
+  lowerJaw.scale.set(.7, .19, .84);
+  lowerJaw.position.set(0, .02, .58);
+  jaw.add(lowerJaw);
+  toothArc(jaw, -.44, false, JAW_PIVOT);            // lower jaw, hinges open
+  // Fins are thin across the body (x) and long fore-aft (z). The extra 90° yaw
+  // these used to carry swapped those two axes and laid them out flat.
+  const finMat = new THREE.MeshStandardMaterial({ color: GREY, roughness: .5, flatShading: true });
+  const dorsal = new THREE.Mesh(new THREE.ConeGeometry(.62, 1.5, 3), finMat);
+  dorsal.scale.set(.3, 1, 1.4);
+  dorsal.position.set(0, 1.1, -.2);
+  dorsal.rotation.x = -.22;
+  dorsal.castShadow = true;
+  shark.add(dorsal);
+  const tailGroup = new THREE.Group();
+  tailGroup.position.z = -2.6;
+  shark.add(tailGroup);
+  const tailStem = Kit.cyl(.42, .16, 1.5, GREY, 12, { roughness: .5 });
+  tailStem.rotation.x = Math.PI / 2;
+  tailStem.position.z = -.9;
+  tailGroup.add(tailStem);
+  const tailFin = new THREE.Mesh(new THREE.ConeGeometry(1.3, 2.2, 3), finMat);
+  tailFin.scale.set(.2, 1, .8);
+  tailFin.position.set(0, .3, -1.95);
+  tailFin.rotation.x = .3;
+  tailGroup.add(tailFin);
+  [-1, 1].forEach(sx => {
+    // pectoral: a flat blade aimed out, down and back — set with an explicit
+    // quaternion rather than Euler angles, which is where the last one went wrong
+    const pecGeo = new THREE.ConeGeometry(.46, 1.25, 3);
+    pecGeo.translate(0, .62, 0);                      // pivot at the root
+    const pec = new THREE.Mesh(pecGeo, finMat);
+    pec.scale.set(1, 1, .16);
+    pec.position.set(sx * .62, -.42, .85);
+    pec.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(sx * 1, -.55, -.45).normalize());
+    shark.add(pec);
+    const eye = Kit.ball(.14, 0x0b0f12, 12, { roughness: .1 });
+    eye.position.set(sx * .78, .3, 2.5);
+    shark.add(eye);
+    const gillSet = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const gill = Kit.box(.03, .42, .06, 0x3f5464, { roughness: .8 });
+      gill.position.set(sx * .92, -.1, 1.3 - i * .26);
+      gillSet.add(gill);
+    }
+    shark.add(gillSet);
+  });
+  shark.position.set(0, -4.5, 0);
+
+  /* ---------- animation state ---------- */
+  let tt = 0, idling = true, sharkAngle = 0, sharkRadius = 14, sharkDepth = -4.5, tailWag = 1;
+  st.add(dt => {
+    tt += dt;
+    // waves
+    const pos = seaGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = basePos[i * 3], z = basePos[i * 3 + 2];
+      pos.array[i * 3 + 1] = waveAt(x, z, tt);
+    }
+    pos.needsUpdate = true;
+    seaGeo.computeVertexNormals();
+
+    boards.forEach((b, i) => {
+      const a = b.userData.a + tt * .06;
+      const r = b.userData.r;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (!b.userData.free) {
+        b.position.set(x, waveAt(x, z, tt) + .1, z);
+        b.rotation.set(Math.sin(tt * 1.3 + i) * .07, a + Math.PI / 2 + Math.sin(tt * .5 + i) * .2, Math.cos(tt * 1.1 + i) * .09);
+      }
+    });
+
+    if (!shark.userData.manual) {
+      sharkAngle += dt * .28;
+      shark.position.set(Math.cos(sharkAngle) * sharkRadius, sharkDepth, Math.sin(sharkAngle) * sharkRadius);
+      // travelling anticlockwise round the circle, velocity is (-sin, 0, cos);
+      // the nose is +Z, so the heading is simply -angle. (It used to be +PI out,
+      // which had the shark swimming backwards round the ring.)
+      shark.rotation.y = -sharkAngle;
+      shark.rotation.z = -.12 + Math.sin(tt * 1.2) * .05;      // banked into the turn
+      shark.rotation.x = Math.sin(tt * .9) * .04;
+    }
+    const wag = tt * 4.4 * tailWag;
+    tailGroup.rotation.y = Math.sin(wag) * .38;
+    tailFin.rotation.y = Math.sin(wag - .5) * .24;             // fin lags the stem
+
+    if (idling) st.look([Math.sin(tt * .12) * 8, 9.5, 15.5], [0, .2, 0]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    buildBoards();
+    shark.userData.manual = false;
+    shark.visible = true;
+    sharkDepth = -4.5; sharkRadius = 14; tailWag = 1;
+    jaw.rotation.x = 0;
+    tailGroup.rotation.y = 0;
+    idling = true;
+  }
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    buildBoards();
+    const victim = boards.find(b => b.userData.name === winner) || boards[0];
+
+    // One damped camera drives the whole sequence — every phase just re-aims it,
+    // so nothing cuts even though the shark's position is only known per beat.
+    const cam = Kit.chase(st, { rate: 2.0 });
+    api.caption('A perfectly ordinary team swim.');
+    SFX.noise({ dur: 3, freq: 700, type: 'bandpass', Q: .8, gain: .1, attack: .8 });
+    cam.to([2, 4.1, 14], [0, .4, 0]);
+    await Kit.wait(1600);
+
+    // fin circles, tension builds
+    api.caption('Something is circling.');
+    sharkDepth = -1.15;
+    let beat = 0, beats = 7;
+    for (let i = 0; i < beats; i++) {
+      SFX.heartbeat(0);
+      SFX.tone({ freq: 46 + i * 3, to: 32, dur: .5, type: 'sine', gain: .22 });
+      const closeness = i / (beats - 1);
+      sharkRadius = 14 - closeness * 5.2;
+      sharkDepth = -1.15 + closeness * .55;
+      tailWag = 1 + closeness * 1.4;
+      cam.to([2 - closeness, 3.4 - closeness * 1.1, 13.5 - closeness * 2.6],
+             [Math.cos(sharkAngle) * sharkRadius * .45, .3, Math.sin(sharkAngle) * sharkRadius * .45],
+             2.0 + closeness * 1.6);
+      await Kit.wait(560 - i * 45);
+    }
+
+    // line up under the victim
+    api.caption(null);
+    shark.userData.manual = true;
+    const vp = victim.position.clone();
+    const approach = vp.clone().normalize().multiplyScalar(11);
+    shark.position.set(approach.x, -3.2, approach.z);
+    const dir = new THREE.Vector3().subVectors(vp, approach).normalize();
+    const yaw = Math.atan2(dir.x, dir.z);
+    shark.rotation.set(0, yaw, 0);
+    tailWag = 3;
+    SFX.noise({ dur: .9, freq: 400, to: 1600, type: 'bandpass', Q: 1, gain: .2 });
+
+    cam.to([vp.x * .55 + 3.5, 4.2, vp.z * .55 + 11], [vp.x * .8, 1.6, vp.z * .8], 3.0);
+    await Kit.tween(.85, t => {
+      shark.position.lerpVectors(approach, vp.clone().setY(-1.2), t);
+      shark.position.y = -3.2 + t * 2.0;
+      shark.rotation.x = -t * .5;
+    }, 'inQuad');
+
+    /* ★ BREACH ★ */
+    SFX.splash();
+    SFX.chomp();
+    SFX.rumble(1.4, .3);
+    st.shake(.55, .9);
+    Kit.puffs(st, { origin: vp.clone().setY(.2), count: 40, color: 0xdff6ff, speed: 9, dir: new THREE.Vector3(0, 1, 0), spread: .8, sizeMin: .6, sizeMax: 2.4, life: 1.6, gravity: -5, additive: false, opacity: .85 });
+    Kit.burst(st, {
+      origin: vp.clone().setY(.1), count: 60, size: .14, speed: 11, gravity: -18, life: 1.5, jitter: .8,
+      dir: new THREE.Vector3(0, 1, 0), spread: .9,
+      material: new THREE.MeshStandardMaterial({ color: 0xbfeaff, roughness: .05, metalness: .2, transparent: true, opacity: .85 })
+    });
+
+    victim.userData.free = true;
+    const boardStart = victim.position.clone();
+    Kit.tween(.9, t => { jaw.rotation.x = Math.sin(t * Math.PI) * .75; }, 'linear');
+
+    // shark leaps clean out of the water, board cartwheels away
+    Kit.tween(1.5, t => {
+      shark.position.y = -1.2 + Math.sin(t * Math.PI) * 7.5;
+      shark.position.x = vp.x + dir.x * t * 4;
+      shark.position.z = vp.z + dir.z * t * 4;
+      shark.rotation.x = -.5 + t * 1.6;
+      shark.rotation.z = t * .5;
+    }, 'linear').then(() => {
+      SFX.splash();
+      st.shake(.25, .9);
+      Kit.puffs(st, { origin: shark.position.clone().setY(0), count: 26, color: 0xdff6ff, speed: 7, dir: new THREE.Vector3(0, 1, 0), sizeMin: .8, sizeMax: 2.6, life: 1.4, gravity: -4, additive: false, opacity: .8 });
+    });
+
+    const boardEnd = new THREE.Vector3(vp.x * .28, .18, vp.z * .28 + 2.4);
+    await Kit.tween(1.9, t => {
+      victim.position.lerpVectors(boardStart, boardEnd, Kit.ease.outQuad(t));
+      victim.position.y = boardStart.y + Math.sin(t * Math.PI) * 9 - t * .1;
+      victim.rotation.x = t * 15;
+      victim.rotation.z = t * 6;
+      victim.rotation.y = t * 3;
+      cam.to([boardEnd.x + 2.0, 3.6 + Math.sin(t * Math.PI) * 3.0, boardEnd.z + 9 - t * 1.5],
+             [victim.position.x, victim.position.y * .55, victim.position.z], 5.5);
+    }, 'linear');
+
+    SFX.splash();
+    victim.rotation.set(0, Math.PI / 2, 0);
+    Kit.puffs(st, { origin: boardEnd.clone(), count: 18, color: 0xdff6ff, speed: 4, dir: new THREE.Vector3(0, 1, 0), sizeMin: .5, sizeMax: 1.6, life: 1.2, gravity: -3, additive: false, opacity: .8 });
+    await Kit.tween(.6, t => {
+      victim.position.y = .18 + (1 - Kit.ease.outBounce(t)) * .5;
+    }, 'linear');
+
+    SFX.ding(880);
+    cam.to([boardEnd.x + .4, 1.9, boardEnd.z + 4.2], [boardEnd.x, .25, boardEnd.z], 2.2);
+    await Kit.wait(1500);
+    cam.stop();
+  }
+
+  Picker.init({
+    title: 'Shark Tank',
+    accent: '#19a6c9',
+    accent2: '#ffd166',
+    kicker: 'Board recovered, rider missing',
+    tagline: 'There is something under the surfboards and it has an opinion.',
+    goLabel: 'Get in the water',
+    againLabel: 'Back in the water',
+    verdict: n => `${n}’s board washed up empty. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

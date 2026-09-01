@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Claw Decides</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 46, exposure: 1.15 });
+  const S = st.scene;
+
+  const sky = Kit.gradientSky([[0, '#120a26'], [.55, '#2b1450'], [1, '#4b1d5e']]);
+  S.background = new THREE.Color(0x0d0718);
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0x0d0718, 16, 46);
+
+  S.add(new THREE.AmbientLight(0x9c86ff, 0.6));
+  S.add(new THREE.HemisphereLight(0xffd9f4, 0x241038, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  key.position.set(5, 12, 9);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -9; key.shadow.camera.right = 9;
+  key.shadow.camera.top = 12; key.shadow.camera.bottom = -3;
+  key.shadow.bias = -0.0005;
+  S.add(key);
+  const neonPink = new THREE.PointLight(0xff3ea5, 26, 20, 2); neonPink.position.set(-3.6, 5.2, 2.6); S.add(neonPink);
+  const neonCyan = new THREE.PointLight(0x2ee6ff, 26, 20, 2); neonCyan.position.set(3.6, 5.2, 2.6); S.add(neonCyan);
+  const inner = new THREE.PointLight(0xfff0c0, 22, 12, 2); inner.position.set(0, 4.0, 0); S.add(inner);
+
+  /* ---------- arcade floor ---------- */
+  const carpet = (function () {
+    const [c, x] = Kit.makeCanvas(256, 256);
+    x.fillStyle = '#160b2c'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 220; i++) {
+      x.fillStyle = ['#ff3ea5', '#2ee6ff', '#ffd166', '#7c4dff'][i % 4];
+      x.globalAlpha = .5;
+      x.beginPath();
+      x.ellipse(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 9, 1 + Math.random() * 4, Math.random() * 3, 0, 7);
+      x.fill();
+    }
+    const t = Kit.texFromCanvas(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6);
+    return t;
+  })();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(50, 50),
+    new THREE.MeshStandardMaterial({ map: carpet, roughness: .85 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  S.add(floor);
+
+  /* ---------- cabinet ---------- */
+  const CAB = { x: 2.2, zf: 1.6, glassBot: 1.7, glassTop: 4.7 };
+  const cab = new THREE.Group();
+  S.add(cab);
+  const shellMat = { color: 0x22103a, roughness: .35, metalness: .35 };
+
+  const base = Kit.box(4.7, 1.7, 3.4, 0x2a1346, shellMat);
+  base.position.y = .85;
+  cab.add(base);
+  const baseTrim = Kit.box(4.86, .22, 3.56, 0xff3ea5, { roughness: .3, emissive: 0xff2e93, emissiveIntensity: 1.4 });
+  baseTrim.position.y = 1.68;
+  cab.add(baseTrim);
+
+  // corner posts + top
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
+    const post = Kit.box(.18, 3.0, .18, 0x33195a, shellMat);
+    post.position.set(sx * CAB.x, 3.2, sz * CAB.zf);
+    cab.add(post);
+  });
+  const roof = Kit.box(4.7, .3, 3.4, 0x2a1346, shellMat);
+  roof.position.y = 4.85;
+  cab.add(roof);
+
+  // glass
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xbfeaff, roughness: .04, metalness: 0, transmission: .0,
+    transparent: true, opacity: .13, side: THREE.DoubleSide
+  });
+  [[0, 0, CAB.zf, 4.4, 3, 0], [0, 0, -CAB.zf, 4.4, 3, 0],
+   [-CAB.x, 0, 0, 3.2, 3, Math.PI / 2], [CAB.x, 0, 0, 3.2, 3, Math.PI / 2]].forEach(([px, , pz, w, h, ry]) => {
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(w, h), glassMat);
+    g.position.set(px, 3.2, pz);
+    g.rotation.y = ry;
+    cab.add(g);
+  });
+
+  // pit floor
+  const pit = Kit.box(4.3, .12, 3.1, 0x120826, { roughness: .8 });
+  pit.position.y = 1.76;
+  pit.receiveShadow = true;
+  cab.add(pit);
+
+  // marquee
+  const marqueeTex = Kit.nameTexture('STAND-UP GRABBER', {
+    w: 1024, h: 260, bg: '#12061f', fg: '#ffd166', fill: .88,
+    shadow: '#ff3ea5', shadowBlur: 34, border: '#ff3ea5', borderWidth: 14, radius: 10
+  });
+  const marquee = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.15),
+    new THREE.MeshStandardMaterial({ map: marqueeTex.texture, emissive: 0xffffff, emissiveMap: marqueeTex.texture, emissiveIntensity: .9, roughness: .6 }));
+  marquee.position.set(0, 5.5, CAB.zf + .02);
+  cab.add(marquee);
+  const marqueeBox = Kit.box(4.7, 1.3, .3, 0x1a0c2e, shellMat);
+  marqueeBox.position.set(0, 5.5, CAB.zf - .12);
+  cab.add(marqueeBox);
+
+  // prize chute + tray
+  const chute = Kit.box(.95, .12, .95, 0x0a0414, { roughness: .9 });
+  chute.position.set(-1.55, 1.7, .95);
+  cab.add(chute);
+  const chuteWalls = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.0, 1.05),
+    new THREE.MeshStandardMaterial({ color: 0x1a0c2e, roughness: .7, side: THREE.BackSide }));
+  chuteWalls.position.set(-1.55, 2.2, .95);
+  cab.add(chuteWalls);
+  // an open collection tray, jutting out of the front where you can see into it
+  const TRAY = new THREE.Vector3(-1.55, .62, 2.32);
+  const BLOCK = .52;
+  const TRAY_REST = TRAY.y - .07 + BLOCK / 2;      // sit the cube ON the tray floor
+  const chuteRamp = Kit.box(1.05, .1, 1.9, 0x1a0c2e, { roughness: .7 });
+  chuteRamp.position.set(TRAY.x, 1.25, 1.62);
+  chuteRamp.rotation.x = .5;
+  cab.add(chuteRamp);
+  const trayFloor = Kit.box(1.4, .1, 1.15, 0x1a0c2e, { roughness: .7, metalness: .2 });
+  trayFloor.position.set(TRAY.x, TRAY.y - .12, TRAY.z);
+  trayFloor.receiveShadow = true;
+  cab.add(trayFloor);
+  [[0, .58, 1.4, .1], [0, -.58, 1.4, .1], [.7, 0, .1, 1.15], [-.7, 0, .1, 1.15]].forEach(([dx, dz, w, d]) => {
+    const wall = Kit.box(w, .26, d, 0xff3ea5, { roughness: .4, emissive: 0xff2e93, emissiveIntensity: .35 });
+    wall.position.set(TRAY.x + dx, TRAY.y - .02, TRAY.z + dz);
+    cab.add(wall);
+  });
+
+  // joystick + button, for flavour
+  const panel = Kit.box(1.9, .12, .8, 0x33195a, shellMat);
+  panel.position.set(1.1, 1.62, 1.1);
+  panel.rotation.x = -.12;
+  cab.add(panel);
+  const stick = Kit.cyl(.05, .05, .5, 0x1a0c2e, 10, { roughness: .4 });
+  stick.position.set(.75, 1.88, 1.05);
+  cab.add(stick);
+  const knob = Kit.ball(.13, 0xff2e93, 16, { roughness: .25, emissive: 0xff2e93, emissiveIntensity: .5 });
+  knob.position.set(.75, 2.12, 1.05);
+  cab.add(knob);
+  const btn = Kit.cyl(.16, .16, .1, 0xffd166, 18, { roughness: .3, emissive: 0xffb300, emissiveIntensity: .8 });
+  btn.position.set(1.45, 1.72, 1.05);
+  cab.add(btn);
+
+  /* ---------- the claw ---------- */
+  const rail = Kit.box(4.3, .1, .1, 0x8f8fb0, { roughness: .3, metalness: .8 });
+  rail.position.set(0, 4.62, -1.0); cab.add(rail);
+  const rail2 = rail.clone(); rail2.position.z = 1.0; cab.add(rail2);
+
+  const trolley = new THREE.Group();
+  trolley.position.set(0, 4.62, 0);
+  cab.add(trolley);
+  const trolleyBox = Kit.box(.6, .26, 2.2, 0x6f6f92, { roughness: .3, metalness: .7 });
+  trolley.add(trolleyBox);
+
+  const cable = Kit.cyl(.025, .025, 1, 0xdedede, 8, { roughness: .4, metalness: .6 });
+  trolley.add(cable);
+
+  const claw = new THREE.Group();
+  trolley.add(claw);
+  const clawHub = Kit.cyl(.24, .3, .3, 0xc0c0d8, 16, { roughness: .25, metalness: .9 });
+  claw.add(clawHub);
+  const prongs = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const pivot = new THREE.Group();
+    pivot.rotation.y = a;
+    claw.add(pivot);
+    const arm = new THREE.Group();
+    arm.position.set(0, -.1, .16);
+    pivot.add(arm);
+    const upper = Kit.box(.12, .46, .12, 0xd4d4ec, { roughness: .2, metalness: .9 });
+    upper.position.y = -.2;
+    arm.add(upper);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(.09, .34, 8),
+      new THREE.MeshStandardMaterial({ color: 0xd4d4ec, roughness: .2, metalness: .9 }));
+    tip.position.set(0, -.55, .1);
+    tip.rotation.x = -.5;
+    arm.add(tip);
+    prongs.push(arm);
+  }
+  function setClaw(open) {                    // 0 = shut, 1 = wide
+    prongs.forEach(p => { p.rotation.x = -.15 - open * .75; });
+  }
+  setClaw(1);
+
+  function setClawDrop(d) {                   // cable length
+    claw.position.y = -d;
+    cable.scale.y = Math.max(.001, d);
+    cable.position.y = -d / 2;
+  }
+  setClawDrop(.6);
+
+  /* ---------- prizes ---------- */
+  let blocks = [];
+  function blockTexture(name) {
+    const hues = ['#ff3ea5', '#2ee6ff', '#ffd166', '#7cff6b', '#ff8a3d', '#c78bff'];
+    const bg = hues[Math.floor(Math.random() * hues.length)];
+    return Kit.nameTexture(name, {
+      w: 400, h: 400, bg, fg: '#170a26', fill: .82, border: 'rgba(255,255,255,.55)', borderWidth: 16, radius: 26
+    }).texture;
+  }
+  function buildBlocks(winner) {
+    blocks.forEach(b => cab.remove(b));
+    blocks = [];
+    const names = Roster.all();
+    const total = Math.max(14, Math.min(30, names.length * 3));
+    const list = [];
+    for (let i = 0; i < total; i++) list.push(names[i % names.length]);
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+    list[0] = winner;                        // index 0 sits on top, ready to be grabbed
+    list.forEach((name, i) => {
+      const size = .52;
+      const b = new THREE.Mesh(new THREE.BoxGeometry(size, size, size),
+        new THREE.MeshStandardMaterial({ map: blockTexture(name), roughness: .55 }));
+      b.castShadow = true; b.receiveShadow = true;
+      b.userData.name = name;
+      if (i === 0) {
+        b.position.set(.35, 2.35, -.1);
+        b.rotation.set(.1, .3, 0);
+      } else {
+        const ring = Math.floor((i - 1) / 8);
+        const a = Math.random() * Math.PI * 2;
+        const r = .35 + Math.random() * 1.5;
+        b.position.set(Math.cos(a) * r * 1.15, 2.1 + ring * .12 + Math.random() * .1, Math.sin(a) * r * .8);
+        b.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      }
+      cab.add(b);
+      blocks.push(b);
+    });
+    return blocks[0];
+  }
+  buildBlocks(Roster.all()[0]);
+
+  /* ---------- attract mode ---------- */
+  let tt = 0, idling = true;
+  st.add(dt => {
+    tt += dt;
+    marquee.material.emissiveIntensity = .75 + Math.sin(tt * 4) * .25;
+    neonPink.intensity = 22 + Math.sin(tt * 2.3) * 8;
+    neonCyan.intensity = 22 + Math.sin(tt * 2.3 + 2) * 8;
+    baseTrim.material.emissiveIntensity = 1.2 + Math.sin(tt * 3.1) * .5;
+    if (idling) {
+      trolley.position.x = Math.sin(tt * .5) * 1.2;
+      st.look([Math.sin(tt * .2) * 3.2, 3.6, 8.4], [0, 3.1, 0]);
+    }
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    trolley.position.set(0, 4.62, 0);
+    setClawDrop(.6); setClaw(1);
+    idling = true;
+  }
+
+  /* ---------- run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    const prize = buildBlocks(winner);
+
+    api.caption('Inserting coin.');
+    st.look([1.6, 3.6, 8.0], [0, 3.1, 0]);
+    SFX.tone({ freq: 900, to: 1400, dur: .08, type: 'square', gain: .13 });
+    SFX.tone({ at: .1, freq: 1200, to: 700, dur: .1, type: 'square', gain: .12 });
+    SFX.tone({ at: .24, freq: 520, to: 300, dur: .18, type: 'square', gain: .1 });
+    await Kit.tween(1.1, t => {
+      st.look([1.6 - t * 1.6, 3.6 + t * .5, 8.0 - t * 1.6], [0, 3.1, 0]);
+    }, 'inOutQuad');
+
+    // line up
+    api.caption('The claw is choosing.');
+    const motor = SFX.drone({ type: 'square', freq: 70, gain: .05 });
+    // A slow overshoot-and-settle, rather than the per-frame random nudge that
+    // used to make the whole gantry buzz.
+    const aimX = prize.position.x;
+    const fromX = trolley.position.x;          // attract mode leaves it anywhere
+    await Kit.tween(1.5, t => {
+      trolley.position.x = fromX + (aimX - fromX) * t + Math.sin(t * Math.PI * 2) * .18 * (1 - t);
+      motor.node.frequency.value = 66 + Math.sin(t * 30) * 5;
+      st.look([-t * 1.4, 4.1 + t * .3, 6.4 - t * .8], [aimX * t, 3.3, 0]);
+    }, 'inOutQuad');
+    const aimZ = prize.position.z;
+    await Kit.tween(1.0, t => {
+      trolley.position.x = aimX;
+      trolley.position.z = aimZ * t;
+      motor.node.frequency.value = 78 + Math.sin(t * 26) * 5;
+    }, 'inOutQuad');
+    motor.stop(.15);
+
+    // descend
+    api.caption(null);
+    SFX.tone({ freq: 300, to: 200, dur: .1, type: 'square', gain: .1 });
+    const winch = SFX.drone({ type: 'sawtooth', freq: 120, gain: .05 });
+    await Kit.tween(1.1, t => {
+      setClawDrop(.6 + t * 1.05);
+      winch.node.frequency.value = 120 - t * 40;
+      st.look([-1.4 + t * .5, 4.4 + t * .5, 5.6 + t * 1.2], [prize.position.x, 3.4 - t * .5, prize.position.z]);
+    }, 'inOutQuad');
+    winch.stop(.1);
+
+    // grab
+    SFX.tone({ freq: 500, to: 180, dur: .16, type: 'square', gain: .16 });
+    SFX.thud(.25);
+    await Kit.tween(.45, t => setClaw(1 - t * .82), 'outQuad');
+    cab.attach(prize);
+    claw.attach(prize);
+    prize.position.set(0, -.62, 0);
+    prize.rotation.set(0, .3, 0);
+
+    // lift, with the traditional near-drop
+    const winch2 = SFX.drone({ type: 'sawtooth', freq: 90, gain: .05 });
+    await Kit.tween(1.2, t => {
+      setClawDrop(1.65 - t * 1.05);
+      winch2.node.frequency.value = 90 + t * 50;
+      prize.rotation.z = Math.sin(t * 14) * .18 * (1 - t * .5);
+      st.look([-.9 - t * .5, 4.9, 6.8 - t * .4], [prize.position.x, 2.9 + t * .7, 0]);
+    }, 'inOutQuad');
+    winch2.stop(.1);
+
+    api.caption('Do not trust the claw.');
+    SFX.tone({ freq: 220, to: 160, dur: .3, type: 'square', gain: .1 });
+    await Kit.tween(.8, t => {
+      const wobble = Math.sin(t * 22) * .3 * (1 - t);
+      claw.rotation.z = wobble;
+      setClaw(.18 + Math.max(0, Math.sin(t * 9)) * .22);   // slipping
+    }, 'linear');
+    claw.rotation.z = 0;
+    setClaw(.18);
+    SFX.ding(1300);
+
+    // to the chute
+    api.caption('It held. Somehow.');
+    await Kit.tween(1.5, t => {
+      trolley.position.x = aimX + (-1.55 - aimX) * Kit.ease.inOutCubic(t);
+      trolley.position.z = aimZ + (0.95 - aimZ) * Kit.ease.inOutCubic(t);
+      claw.rotation.z = Math.sin(t * 12) * .07 * (1 - t);
+      st.look([-2.2 - t * .6, 4.8, 6.6 - t * .3], [-1.3, 3.6, .5]);
+    }, 'linear');
+
+    // release
+    SFX.tone({ freq: 420, to: 900, dur: .12, type: 'square', gain: .12 });
+    await Kit.tween(.3, t => setClaw(.18 + t * .8), 'outQuad');
+    cab.attach(prize);
+    const from = prize.position.clone();
+    api.caption(null);
+    // down the chute, out of the machine, into the tray
+    await Kit.tween(.75, t => {
+      prize.position.x = from.x + (TRAY.x - from.x) * t;
+      prize.position.z = from.z + (TRAY.z - from.z) * Kit.ease.outQuad(t);
+      prize.position.y = from.y + (TRAY_REST - from.y) * Kit.ease.inQuad(t);
+      prize.rotation.x += .19; prize.rotation.z += .12;
+      st.look([-2.8 + t * .7, 4.7 - t * 2.1, 6.3 - t * .9], [-1.55, 3.2 - t * 2.5, .9 + t * 1.2]);
+    }, 'linear');
+    SFX.thud(.4);
+    SFX.noise({ dur: .35, freq: 1800, to: 300, gain: .18 });
+    st.shake(.09, .86);
+    await Kit.tween(.55, t => {
+      prize.position.y = TRAY_REST + (1 - Kit.ease.outBounce(t)) * .45;
+      prize.rotation.set(prize.rotation.x * (1 - t), prize.rotation.y * (1 - t), prize.rotation.z * (1 - t));
+    }, 'linear');
+    prize.rotation.set(0, 0, 0);
+    prize.position.set(TRAY.x, TRAY_REST, TRAY.z);
+
+    SFX.fanfare();
+    await Kit.tween(1.2, t => {
+      st.look([-2.1 + t * .35, 2.9 - t * .7, 5.6 - t * 1.0], [TRAY.x, TRAY_REST, TRAY.z]);
+    }, 'inOutQuad');
+    await Kit.wait(600);
+  }
+
+  Picker.init({
+    title: 'The Claw Decides',
+    accent: '#ff3ea5',
+    accent2: '#2ee6ff',
+    kicker: 'Won fair and square',
+    tagline: 'The claw grips at 4% of its advertised strength. Good luck.',
+    goLabel: 'Insert coin',
+    againLabel: 'Another go',
+    verdict: n => `The claw picked up ${n} and, against all precedent, did not drop them. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

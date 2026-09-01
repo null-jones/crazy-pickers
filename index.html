@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Crazy Pickers — unhinged random name pickers for standup</title>
+<meta name="description" content="Ten absurd 3D random name pickers for daily standup. Car crashes, hairballs, volcanoes, sharks and a séance.">
+<style>
+:root{
+  --ink:#f4f6ff; --dim:#a9b0cc; --bg:#05060c;
+  --display:'Impact','Haettenschweiler','Arial Narrow Bold','Arial Black',system-ui,sans-serif;
+  --body:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+canvas#stage{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+.veil{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(130% 90% at 50% 12%,rgba(5,6,12,.05),rgba(5,6,12,.45) 48%,rgba(5,6,12,.82) 100%)}
+main{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:0 22px 90px}
+.card,.roster{backdrop-filter:blur(9px)}
+
+/* hero */
+header.hero{min-height:82vh;display:grid;align-content:center;justify-items:center;text-align:center;gap:18px;padding:70px 0 40px}
+.eyebrow{font-size:12px;letter-spacing:.42em;text-transform:uppercase;color:#7de3ff;margin:0}
+h1{font-family:var(--display);font-size:clamp(52px,13vw,158px);line-height:.86;letter-spacing:.01em;
+  text-transform:uppercase;margin:0;
+  background:linear-gradient(96deg,#ff2e6d,#ffb300 32%,#8fd14a 56%,#2ee6ff 78%,#c9a0ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 40px rgba(255,46,109,.4))}
+.sub{max-width:62ch;font-size:clamp(15px,2vw,19px);line-height:1.6;color:var(--dim);margin:0}
+.sub b{color:var(--ink);font-weight:600}
+.herobtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.cta{font-family:var(--display);font-size:clamp(17px,2.4vw,24px);letter-spacing:.07em;text-transform:uppercase;
+  border-radius:12px;padding:.5em 1.25em;cursor:pointer;border:2px solid #ff2e6d;background:#ff2e6d;color:#0b0b12;
+  text-decoration:none;display:inline-block;transition:.18s}
+.cta.ghost{background:transparent;color:var(--ink);border-color:rgba(255,255,255,.28)}
+.cta:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(255,46,109,.35)}
+.cta.ghost:hover{border-color:#2ee6ff;box-shadow:none}
+.scrollhint{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#5f6785;margin-top:26px}
+
+/* section headings */
+h2.sec{font-family:var(--display);font-size:clamp(26px,4.5vw,44px);letter-spacing:.04em;text-transform:uppercase;
+  margin:0 0 6px}
+.seclead{color:var(--dim);font-size:15px;line-height:1.6;margin:0 0 26px;max-width:64ch}
+
+/* cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:18px;perspective:1400px}
+.card{position:relative;display:block;text-decoration:none;color:inherit;border-radius:18px;padding:22px 22px 20px;
+  background:linear-gradient(165deg,rgba(255,255,255,.075),rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.11);overflow:hidden;isolation:isolate;
+  transform-style:preserve-3d;transition:transform .18s ease-out,border-color .25s,box-shadow .25s}
+.card::before{content:'';position:absolute;inset:-1px;z-index:-1;border-radius:18px;opacity:0;transition:opacity .3s;
+  background:radial-gradient(70% 90% at 20% 0%,var(--c),transparent 70%)}
+.card:hover{border-color:var(--c);box-shadow:0 22px 60px -18px var(--c)}
+.card:hover::before{opacity:.32}
+.card .num{position:absolute;top:14px;right:18px;font-family:var(--display);font-size:38px;color:rgba(255,255,255,.09)}
+.card .emoji{font-size:38px;line-height:1;filter:drop-shadow(0 4px 14px rgba(0,0,0,.6))}
+.card h3{font-family:var(--display);font-size:26px;letter-spacing:.03em;text-transform:uppercase;margin:14px 0 8px;color:var(--c)}
+.card p{margin:0;font-size:13.5px;line-height:1.62;color:#c2c8e0}
+.card .go{margin-top:16px;font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--c);opacity:.85}
+
+/* roster */
+.roster{margin-top:70px;border-radius:20px;padding:26px;border:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(165deg,rgba(255,255,255,.06),rgba(255,255,255,.015));
+  display:grid;grid-template-columns:1fr 320px;gap:26px;align-items:start}
+@media (max-width:760px){.roster{grid-template-columns:1fr}}
+.roster textarea{width:100%;min-height:210px;resize:vertical;background:#05060d;border:1px solid rgba(255,255,255,.16);
+  border-radius:12px;color:var(--ink);padding:14px;font:15px/1.85 ui-monospace,SFMono-Regular,Menlo,monospace}
+.roster textarea:focus{outline:2px solid #2ee6ff;border-color:transparent}
+.roster label.chk{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#c3c9de;cursor:pointer;line-height:1.5;margin-top:14px}
+.roster label.chk input{margin-top:2px;accent-color:#2ee6ff;width:17px;height:17px}
+.roster .status{font-size:12.5px;color:#828aa8;line-height:1.65;margin-top:12px}
+.minibtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:var(--ink);border-radius:999px;
+  padding:9px 15px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;margin-top:14px;transition:.18s}
+.minibtn:hover{background:rgba(255,255,255,.16);border-color:#2ee6ff}
+
+.ghlink{position:fixed;top:16px;right:18px;z-index:6;display:inline-flex;align-items:center;gap:8px;
+  padding:9px 15px;border-radius:999px;text-decoration:none;color:var(--ink);
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);
+  font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  backdrop-filter:blur(8px);transition:.18s}
+.ghlink:hover{background:rgba(255,255,255,.16);border-color:#2ee6ff;transform:translateY(-1px)}
+.ghlink svg{display:block}
+@media (max-width:560px){.ghlink span{display:none}.ghlink{padding:9px 11px}}
+footer a{color:#9aa2c8}
+footer a:hover{color:#2ee6ff}
+footer{position:relative;z-index:2;text-align:center;padding:40px 22px 60px;color:#5f6785;font-size:12.5px;line-height:1.8}
+footer code{background:rgba(255,255,255,.07);padding:2px 7px;border-radius:5px;font-size:12px}
+.rule{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);margin:64px 0 34px}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="veil"></div>
+
+<a class="ghlink" href="https://github.com/null-jones/crazy-pickers" target="_blank" rel="noopener"
+   aria-label="View the source on GitHub"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><span>GitHub</span></a>
+
+<main>
+  <header class="hero">
+    <p class="eyebrow">Random name pickers · daily standup</p>
+    <h1>Crazy<br>Pickers</h1>
+    <p class="sub">Ten ways to decide who talks first. None of them sensible.</p>
+    <div class="herobtns">
+      <a class="cta" href="#pickers">See the ten</a>
+      <button class="cta ghost" id="surprise">Surprise me</button>
+    </div>
+    <p class="scrollhint">Scroll ↓</p>
+  </header>
+
+  <section id="pickers">
+    <h2 class="sec">The Ten</h2>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section class="roster">
+    <div>
+      <h2 class="sec" style="font-size:30px">The Roster</h2>
+      <p class="seclead" style="margin-bottom:14px">One name per line. Shared by all ten pickers.</p>
+      <textarea id="names" spellcheck="false"></textarea>
+      <label class="chk"><input type="checkbox" id="norepeat">
+        <span>No repeats — everybody goes once before anybody goes twice</span></label>
+      <button class="minibtn" id="resetcycle">Reset the cycle</button>
+    </div>
+    <div>
+      <h3 style="font-family:var(--display);font-size:20px;letter-spacing:.05em;text-transform:uppercase;margin:0 0 10px;color:#2ee6ff">This cycle</h3>
+      <p class="status" id="status"></p>
+      <p class="status" style="margin-top:18px">Override for one run:
+        <code style="background:rgba(255,255,255,.07);padding:3px 7px;border-radius:5px">?names=Ada,Grace,Linus</code></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  No build step, no network. <a href="https://github.com/null-jones/crazy-pickers" target="_blank" rel="noopener">Source on GitHub</a>.
+</footer>
+
+<script src="vendor/three.global.js"></script>
+<script src="shared/sfx.js"></script>
+<script src="shared/roster.js"></script>
+<script src="shared/three-kit.js"></script>
+<script>
+const PICKERS = [
+  { file: 'car-crash',       emoji: '🚗', c: '#ff2e6d', title: 'Crash Test Standup',
+    blurb: 'A name on a number plate, a wall, and no brakes.' },
+  { file: 'cat-vomit',       emoji: '🐈', c: '#8fd14a', title: 'Hairball Roulette',
+    blurb: 'The cat ate the roster. It returns one name, slightly damp.' },
+  { file: 'toilet-flush',    emoji: '🚽', c: '#2fb6c9', title: 'Toilet of Destiny',
+    blurb: 'Everyone in the bowl. Last one floating speaks.' },
+  { file: 'volcano',         emoji: '🌋', c: '#ff6a1a', title: 'Volcano Sacrifice',
+    blurb: 'Names in stone, into the crater. It spits one back.' },
+  { file: 'claw-machine',    emoji: '🕹️', c: '#ff3ea5', title: 'The Claw Decides',
+    blurb: 'An arcade claw, gripping at 4% of advertised strength.' },
+  { file: 'shark-tank',      emoji: '🦈', c: '#19a6c9', title: 'Shark Tank',
+    blurb: 'The team is on surfboards. Something below has an opinion.' },
+  { file: 'alien-abduction', emoji: '🛸', c: '#8dfbe0', title: 'Alien Abduction',
+    blurb: 'Your colleagues are cows. The saucer takes one.' },
+  { file: 'seance',          emoji: '🔮', c: '#7ee3ff', title: 'Standup Séance',
+    blurb: 'A planchette spells the name out, letter by letter.' },
+  { file: 'rocket-launch',   emoji: '🚀', c: '#ff6a3d', title: 'Launch Failure',
+    blurb: 'Everyone gets a rocket. Most will not be fine.' },
+  { file: 'microwave',       emoji: '📟', c: '#ffb300', title: 'Microwave Meltdown',
+    blurb: 'Names in foil. Twelve seconds. One legible survivor.' }
+];
+
+/* ---------- cards ---------- */
+const grid = document.getElementById('grid');
+PICKERS.forEach((p, i) => {
+  const a = document.createElement('a');
+  a.className = 'card';
+  a.href = `pickers/${p.file}.html`;
+  a.style.setProperty('--c', p.c);
+  a.innerHTML = `<span class="num">${String(i + 1).padStart(2, '0')}</span>
+    <div class="emoji">${p.emoji}</div>
+    <h3>${p.title}</h3>
+    <p>${p.blurb}</p>
+    <div class="go">Run it →</div>`;
+  // a small parallax tilt, because everything else here is in 3D too
+  a.addEventListener('pointermove', e => {
+    const r = a.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+    a.style.transform = `rotateY(${px * 9}deg) rotateX(${-py * 9}deg) translateZ(14px)`;
+  });
+  a.addEventListener('pointerleave', () => { a.style.transform = ''; });
+  a.addEventListener('click', () => { try { SFX.click(.2); } catch (e) {} });
+  grid.appendChild(a);
+});
+
+document.getElementById('surprise').onclick = () => {
+  const p = PICKERS[Math.floor(Math.random() * PICKERS.length)];
+  try { SFX.tone({ freq: 300, to: 1200, dur: .3, type: 'square', gain: .12 }); } catch (e) {}
+  setTimeout(() => { location.href = `pickers/${p.file}.html`; }, 160);
+};
+
+/* ---------- roster ---------- */
+const txt = document.getElementById('names');
+const chk = document.getElementById('norepeat');
+const status = document.getElementById('status');
+function sync() {
+  chk.checked = Roster.noRepeat();
+  const used = Roster.used(), all = Roster.all();
+  status.textContent = !Roster.noRepeat()
+    ? 'Pure chaos mode is on: anybody can be picked on any day, including three days running.'
+    : used.length
+      ? `Already gone: ${used.join(', ')}. Still to come: ${all.filter(n => !used.includes(n)).join(', ') || '— nobody, the cycle resets on the next pick.'}`
+      : `Nobody has gone yet. All ${all.length} names are in play.`;
+}
+txt.value = Roster.all().join('\n');
+txt.oninput = () => { Roster.set(txt.value.split('\n')); sync(); };
+chk.onchange = () => { Roster.setNoRepeat(chk.checked); sync(); };
+document.getElementById('resetcycle').onclick = () => { Roster.clearUsed(); sync(); try { SFX.click(); } catch (e) {} };
+sync();
+
+/* ---------- 3D background: a slow carousel of the ten ---------- */
+(function background() {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 55, alpha: true, shadows: false, exposure: 1.2 });
+  const S = st.scene;
+  S.add(new THREE.AmbientLight(0xffffff, 1.6));
+  const p1 = new THREE.PointLight(0xff2e6d, 120, 60, 2); p1.position.set(-12, 6, 8); S.add(p1);
+  const p2 = new THREE.PointLight(0x2ee6ff, 120, 60, 2); p2.position.set(12, -4, 8); S.add(p2);
+
+  const ring = new THREE.Group();
+  S.add(ring);
+  const R = 14;
+  PICKERS.forEach((p, i) => {
+    const a = (i / PICKERS.length) * Math.PI * 2;
+    const tex = Kit.nameTexture(p.title.split(' ')[0], {
+      w: 640, h: 400, bg: 'rgba(0,0,0,0)', fg: p.c, fill: .78, shadow: p.c, shadowBlur: 40
+    }).texture;
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.3),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: .34, blending: THREE.AdditiveBlending, depthWrite: false }));
+    tile.position.set(Math.cos(a) * R, Math.sin(i * 1.7) * 2.4, Math.sin(a) * R);
+    tile.lookAt(0, tile.position.y, 0);
+    tile.rotateY(Math.PI);
+    ring.add(tile);
+
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(1.3, .03, 8, 40),
+      new THREE.MeshBasicMaterial({ color: p.c, transparent: true, opacity: .22 }));
+    frame.position.copy(tile.position).multiplyScalar(1.18);
+    frame.position.y = tile.position.y * 1.1;
+    ring.add(frame);
+  });
+
+  // drifting motes
+  const moteGeo = new THREE.BufferGeometry();
+  const pts = [], cols = [];
+  const cObj = new THREE.Color();
+  for (let i = 0; i < 500; i++) {
+    pts.push(Kit.rnd(-34, 34), Kit.rnd(-16, 16), Kit.rnd(-30, 12));
+    cObj.set(PICKERS[i % PICKERS.length].c);
+    cols.push(cObj.r, cObj.g, cObj.b);
+  }
+  moteGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  moteGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+    size: .3, map: Kit.softSprite(), alphaTest: .01, vertexColors: true, transparent: true,
+    opacity: .7, blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  S.add(motes);
+
+  let t = 0;
+  st.add(dt => {
+    t += dt;
+    ring.rotation.y = t * .08;
+    ring.children.forEach((c, i) => { c.position.y += Math.sin(t * .6 + i) * .0025; });
+    motes.rotation.y = t * .015;
+    const scroll = Math.min(1, (window.scrollY || 0) / Math.max(1, innerHeight));
+    st.look([Math.sin(t * .07) * 3.4, 1.4 + scroll * 3.2, 15.5 + scroll * 5], [0, scroll * 1.2, 0]);
+    return true;
+  });
+})();
+</script>
+</body>
+</html>
