@@ -22,5 +22,7 @@ window.PICKERS = [
   { key: 'microwave',       emoji: '📟', accent: '#ffb300', accent2: '#5dff9a', title: 'Microwave Meltdown',
     blurb: 'Names in foil. Twelve seconds. One legible survivor.' },
   { key: 'zombie-outbreak', emoji: '🧟', accent: '#7cff5e', accent2: '#ff3b3b', title: 'Zombie Outbreak',
-    blurb: 'The car park is overrun. Last one uninfected has the floor.' }
+    blurb: 'The car park is overrun. Last one uninfected has the floor.' },
+  { key: 'foul-ball',       emoji: '⚾', accent: '#4cc9f0', accent2: '#ff5a5f', title: 'Foul Ball',
+    blurb: 'One swing, one fan in the stands, one very sore head.' }
 ];

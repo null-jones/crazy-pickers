@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Foul Ball</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.25, far: 600 });
+  const S = st.scene;
+
+  // early evening, floodlights just coming on
+  const sky = Kit.gradientSky([[0, '#0b1230'], [.45, '#2a3c7a'], [.75, '#8a5f9a'], [.9, '#f0955c'], [1, '#ffd08a']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0x8a6f9a, 120, 420);
+
+  S.add(new THREE.AmbientLight(0xbfc8ff, 0.8));
+  S.add(new THREE.HemisphereLight(0xffe0c0, 0x1f3a1f, 0.9));
+  const sun = new THREE.DirectionalLight(0xffe2c0, 2.2);
+  sun.position.set(40, 50, 30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
+  sun.shadow.camera.top = 90; sun.shadow.camera.bottom = -90;
+  sun.shadow.camera.far = 220;
+  sun.shadow.bias = -0.0008;
+  S.add(sun);
+
+  /* ---------- the field ---------- */
+  // home plate is the origin; the outfield is -Z
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(160, 64), new THREE.MeshStandardMaterial({ color: 0x2f7d3a, roughness: .95 }));
+  grass.rotation.x = -Math.PI / 2; grass.receiveShadow = true; S.add(grass);
+  // mown stripes
+  for (let i = -8; i <= 8; i++) {
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(6, 130), new THREE.MeshStandardMaterial({ color: i % 2 ? 0x2a7234 : 0x33853f, roughness: .95 }));
+    stripe.rotation.x = -Math.PI / 2; stripe.position.set(i * 6, .005, -60); S.add(stripe);
+  }
+  const dirtMat = new THREE.MeshStandardMaterial({ color: 0x9a6a3c, roughness: 1 });
+  const infield = new THREE.Mesh(new THREE.CircleGeometry(4.2, 32), dirtMat);
+  infield.rotation.x = -Math.PI / 2; infield.position.y = .012; S.add(infield);
+  const mound = Kit.cyl(2.6, 3.2, .35, 0x9a6a3c, 32, { roughness: 1 });
+  mound.position.set(0, .17, -18.4); mound.receiveShadow = true; S.add(mound);
+  const BASE = 27.4;
+  [[BASE / Math.SQRT2, -BASE / Math.SQRT2], [0, -BASE * Math.SQRT2], [-BASE / Math.SQRT2, -BASE / Math.SQRT2]].forEach(([x, z]) => {
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), dirtMat);
+    pad.rotation.x = -Math.PI / 2; pad.position.set(x, .012, z); S.add(pad);
+    const base = Kit.box(.5, .1, .5, 0xffffff, { roughness: .8 }); base.position.set(x, .06, z); S.add(base);
+  });
+  // base paths + foul lines
+  function path(x0, z0, x1, z1, w, col) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), new THREE.MeshStandardMaterial({ color: col, roughness: 1 }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = -Math.atan2(x1 - x0, -(z1 - z0));
+    m.position.set((x0 + x1) / 2, .014, (z0 + z1) / 2); S.add(m);
+  }
+  const d = BASE / Math.SQRT2;
+  path(0, 0, d, -d, 1.6, 0x9a6a3c); path(d, -d, 0, -2 * d, 1.6, 0x9a6a3c);
+  path(0, -2 * d, -d, -d, 1.6, 0x9a6a3c); path(-d, -d, 0, 0, 1.6, 0x9a6a3c);
+  path(0, 0, 62, -62, .25, 0xffffff); path(0, 0, -62, -62, .25, 0xffffff);
+  const plate = Kit.box(.45, .05, .45, 0xffffff, { roughness: .8 }); plate.position.y = .03; S.add(plate);
+
+  /* ---------- outfield wall, stands, jumbotron ---------- */
+  const WALL_R = 60, TIERS = 9, TIER_H = 1.25, TIER_D = 1.7, ARC = Math.PI * .62, SEGS = 22;
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e4a2b, roughness: .9 });
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x4d5468, roughness: .9 });
+  const seatMats = [0x2f5fb0, 0x2f5fb0, 0xc23b3b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: .8 }));
+  const _d = new THREE.Object3D();
+  function arcBoxes(r, y, h, depth, mat, count) {
+    // one instanced draw per arc rather than `count` meshes
+    const segLen = (ARC * r) / count + .12;
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(segLen, h, depth), mat, count);
+    for (let i = 0; i < count; i++) {
+      const th = -ARC / 2 + (i + .5) * ARC / count;
+      _d.position.set(Math.sin(th) * r, y, -Math.cos(th) * r);
+      _d.rotation.set(0, -th, 0); _d.scale.set(1, 1, 1); _d.updateMatrix();
+      im.setMatrixAt(i, _d.matrix);
+    }
+    im.receiveShadow = true;
+    S.add(im);
+    return im;
+  }
+  arcBoxes(WALL_R, 1.5, 3, .6, wallMat, SEGS);
+  arcBoxes(WALL_R, 3.05, .12, .7, new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: .6 }), SEGS);
+  for (let k = 0; k < TIERS; k++) {
+    const r = WALL_R + 1.2 + k * TIER_D + TIER_D / 2;
+    arcBoxes(r, k * TIER_H + TIER_H / 2 + .3, TIER_H, TIER_D, standMat, SEGS);
+    arcBoxes(r + .25, k * TIER_H + TIER_H + .5, .38, .55, seatMats[k % 3], SEGS);     // seat backs
+  }
+  const backR = WALL_R + 1.2 + TIERS * TIER_D;
+  arcBoxes(backR + .8, TIERS * TIER_H / 2 + 2.6, TIERS * TIER_H + 5.2, 1.4, new THREE.MeshStandardMaterial({ color: 0x2b2f44, roughness: .9 }), SEGS);
+  // advertising hoardings along the top
+  const adTex = Kit.nameTexture('STANDUP STADIUM  ·  HOME OF THE DAILY UPDATE  ·  STANDUP STADIUM', { w: 2048, h: 180, bg: '#1b1f33', fg: '#ffd23f', fill: .96, shadow: '#ffb300', shadowBlur: 14 }).texture;
+  adTex.wrapS = THREE.RepeatWrapping; adTex.repeat.set(1, 1);
+  arcBoxes(backR + .05, TIERS * TIER_H + 4.2, 1.6, .1, new THREE.MeshStandardMaterial({ map: adTex, emissive: 0xffffff, emissiveMap: adTex, emissiveIntensity: .6 }), SEGS);
+
+  const JUMBO = { r: backR + 6, y: TIERS * TIER_H + 12.5 };
+  const jumboKit = Kit.nameTexture('PLAY BALL', { w: 1024, h: 460, bg: '#06070f', fg: '#ffd23f', fill: .82, shadow: '#ff9a3d', shadowBlur: 40, border: '#2a2f48', borderWidth: 16 });
+  const jumbo = new THREE.Mesh(new THREE.PlaneGeometry(24, 10.8),
+    new THREE.MeshStandardMaterial({ map: jumboKit.texture, emissive: 0xffffff, emissiveMap: jumboKit.texture, emissiveIntensity: 1.1, roughness: .5 }));
+  jumbo.position.set(0, JUMBO.y, -JUMBO.r);
+  S.add(jumbo);
+  const jumboFrame = Kit.box(25.4, 12.2, 1.4, 0x1a1d2c, { roughness: .6, metalness: .4 }); jumboFrame.position.set(0, JUMBO.y, -JUMBO.r - .8); S.add(jumboFrame);
+  [-9, 9].forEach(x => { const leg = Kit.box(.8, 12, .8, 0x2b2f44, { roughness: .8 }); leg.position.set(x, JUMBO.y - 11, -JUMBO.r - .8); S.add(leg); });
+  // floodlight towers
+  [[-52, -40], [52, -40], [-30, 30], [30, 30]].forEach(([x, z]) => {
+    const pole = Kit.cyl(.5, .8, 34, 0x3b3f52, 10, { roughness: .7, metalness: .3 }); pole.position.set(x, 17, z); S.add(pole);
+    const bank = Kit.box(6, 2.4, .8, 0xfff4d6, { emissive: 0xfff0c8, emissiveIntensity: 3, roughness: .4 }); bank.position.set(x, 34.5, z); bank.lookAt(0, 8, -30); S.add(bank);
+  });
+
+  /* ---------- the crowd ---------- */
+  // Hundreds of anonymous fans as two instanced meshes; the roster gets full rigs.
+  const FAN_CAP = 1600;   // must exceed the seat count, or the whole draw is silently dropped
+  const fanBody = new THREE.InstancedMesh(new THREE.BoxGeometry(.5, .9, .42), new THREE.MeshStandardMaterial({ roughness: .9 }), FAN_CAP);
+  const fanHead = new THREE.InstancedMesh(new THREE.SphereGeometry(.19, 10, 8), new THREE.MeshStandardMaterial({ roughness: .8 }), FAN_CAP);
+  fanBody.castShadow = fanHead.castShadow = false;
+  S.add(fanBody); S.add(fanHead);
+  const dm = new THREE.Object3D(), col = new THREE.Color();
+  let fanCount = 0;
+  const seats = [];                    // every seat, so named fans can take some
+  for (let k = 0; k < TIERS; k++) {
+    const r = WALL_R + 1.2 + k * TIER_D + TIER_D / 2 - .15, n = Math.round(ARC * r / 1.05);
+    for (let i = 0; i < n; i++) {
+      const th = -ARC / 2 + (i + .5) * ARC / n;
+      seats.push({ x: Math.sin(th) * r, y: k * TIER_H + .3 + TIER_H, z: -Math.cos(th) * r, th, tier: k, taken: false });
+    }
+  }
+  function seatFacing(seat) { return Math.atan2(-seat.x, -seat.z); }
+  function fillAnonymous() {
+    fanCount = 0;
+    seats.forEach(seat => {
+      if (seat.taken || Math.random() < .12 || fanCount >= FAN_CAP) return;
+      const f = seatFacing(seat);
+      dm.position.set(seat.x, seat.y + .45, seat.z); dm.rotation.set(0, f, 0); dm.scale.set(1, Kit.rnd(.9, 1.1), 1); dm.updateMatrix();
+      fanBody.setMatrixAt(fanCount, dm.matrix);
+      col.set(Kit.pickOne(People.CLOTH)); fanBody.setColorAt(fanCount, col);
+      dm.position.y = seat.y + 1.12; dm.scale.set(1, 1, 1); dm.updateMatrix();
+      fanHead.setMatrixAt(fanCount, dm.matrix);
+      col.set(Kit.pickOne(People.SKIN)); fanHead.setColorAt(fanCount, col);
+      fanCount++;
+    });
+    fanBody.count = fanHead.count = fanCount;
+    fanBody.instanceMatrix.needsUpdate = fanHead.instanceMatrix.needsUpdate = true;
+    fanBody.instanceColor.needsUpdate = fanHead.instanceColor.needsUpdate = true;
+  }
+
+  let fans = [];
+  function labelFor(name) {
+    const tex = Kit.nameTexture(name, { w: 512, h: 190, bg: '#f7f4ea', fg: '#14121f', fill: .8, border: '#14121f', borderWidth: 12, radius: 22 }).texture;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(2.1, .78, 1); sp.position.y = 2.5;
+    return sp;
+  }
+  function seatFans(names) {
+    fans.forEach(f => S.remove(f.g)); fans = [];
+    seats.forEach(s => { s.taken = false; });
+    // spread them through the middle tiers where the camera can see them
+    const pool = seats.filter(s => s.tier >= 1 && s.tier <= TIERS - 2 && Math.abs(s.th) < ARC * .42);
+    names.forEach(name => {
+      let seat; do { seat = Kit.pickOne(pool); } while (seat.taken);
+      seat.taken = true;
+      const front = seats.filter(o => o.tier === seat.tier - 1)
+        .reduce((a, b) => Math.abs(b.th - seat.th) < Math.abs(a.th - seat.th) ? b : a);
+      front.taken = true;
+      const p = People.make({ x: seat.x, y: seat.y, z: seat.z, facing: seatFacing(seat), name });
+      p.label = labelFor(name); p.g.add(p.label);
+      p.seat = seat;
+      // everybody's holding a hot dog
+      const dog = Kit.cyl(.06, .06, .34, 0xc9773a, 8, { roughness: .8 }); dog.rotation.z = Math.PI / 2; dog.position.set(0, -.62, .12);
+      const bun = Kit.box(.36, .1, .14, 0xe9c48a, { roughness: .9 }); bun.position.set(0, -.68, .12);
+      p.arms[1].add(dog); p.arms[1].add(bun); p.dog = dog; p.bun = bun;
+      p.arms[1].rotation.x = -.9;
+      S.add(p.g); fans.push(p);
+    });
+    fillAnonymous();
+  }
+  seatFans(Roster.all());
+
+  /* ---------- players ---------- */
+  const pitcher = People.make({ x: 0, y: .35, z: -18.4, facing: 0, shirt: 0xf2f2f2, legs: 0xf2f2f2 });
+  S.add(pitcher.g);
+  const batter = People.make({ x: .95, y: .3, z: .2, facing: -Math.PI / 2 + .25, shirt: 0x2f5fb0, legs: 0xf2f2f2 });
+  S.add(batter.g);
+  const bat = Kit.cyl(.035, .06, 1.05, 0xd9a866, 10, { roughness: .6 });
+  bat.position.set(0, -.95, 0); batter.arms[1].add(bat);
+  batter.arms[1].rotation.set(-2.4, 0, -.5); batter.arms[0].rotation.set(-2.2, 0, .6);
+  [pitcher, batter].forEach(p => { const cap = Kit.cyl(.19, .19, .1, 0x1f3f8a, 12, { roughness: .8 }); cap.position.y = 1.62; p.hips.add(cap); });
+  const catcher = People.make({ x: 0, y: .3, z: 1.9, facing: Math.PI, shirt: 0x2b2b30, legs: 0x2b2b30, scale: 1 });
+  catcher.hips.position.y = -.42; catcher.legPivots.forEach(l => l.rotation.x = -1.5); catcher.arms.forEach(a => a.rotation.x = -1.2);
+  S.add(catcher.g);
+
+  const ball = Kit.ball(.19, 0xffffff, 12, { roughness: .5 });
+  ball.position.set(.3, 1.6, -18.0);
+  S.add(ball);
+  const ballGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.softSprite(), color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  ballGlow.scale.setScalar(1.4); S.add(ballGlow);
+
+  /* ---------- ambience ---------- */
+  let tt = 0, idling = true, murmur = null, jumboBlink = 0;
+  st.add(dt => {
+    tt += dt;
+    ballGlow.position.copy(ball.position);
+    [pitcher, batter, catcher, ...fans].forEach(p => People.animate(p, tt, dt));
+    // anonymous fans do the wave, sort of
+    if (idling) st.look([Math.sin(tt * .1) * 30, 14, 34 + Math.cos(tt * .1) * 6], [0, 6, -40]);
+    return true;
+  });
+  // the batter's arms must hold the bat, whatever idle does to them
+  st.add(() => { if (batter.mode === 'idle') { batter.arms[1].rotation.set(-2.4, 0, -.5); batter.arms[0].rotation.set(-2.2, 0, .6); } return true; });
+
+  function resetScene() {
+    Kit.clearTweens();
+    seatFans(Roster.all());
+    jumboKit.draw('PLAY BALL');
+    ball.position.set(.3, 1.6, -18.0); ball.visible = true;
+    [pitcher, batter].forEach(People.reset);
+    pitcher.g.rotation.y = 0; batter.g.rotation.y = -Math.PI / 2 + .25;
+    idling = true;
+  }
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    idling = false;
+    seatFans(Roster.all());
+    const target = fans.find(f => f.name === winner) || fans[0];
+    const seatPos = target.g.position.clone();
+
+    murmur = SFX.drone({ noise: true, type: 'bandpass', freq: 900, Q: .6, gain: .07, rate: 1.2 });
+    const cam = Kit.chase(st, { rate: 2.4 });
+    cam.to([2.2, 2.6, 5.2], [0, 1.5, -18]);
+    api.caption('Bottom of the ninth. Somebody has to speak first.');
+    SFX.organ(true);
+    await Kit.wait(1900);
+
+    // the wind-up
+    api.caption(null);
+    await Kit.tween(.9, t => {
+      pitcher.arms[1].rotation.x = -t * 3.1;
+      pitcher.hips.rotation.y = -t * .6;
+      pitcher.legPivots[0].rotation.x = -t * 1.3;
+      pitcher.hips.position.y = Math.sin(t * Math.PI) * .12;
+    }, 'inOutQuad');
+    // the pitch
+    SFX.whoosh(.4, .35);
+    const from = ball.position.clone(), to = new THREE.Vector3(.3, 1.15, .2);
+    Kit.tween(.25, t => { pitcher.arms[1].rotation.x = -3.1 + t * 4.2; pitcher.hips.rotation.y = -.6 + t * 1.1; pitcher.legPivots[0].rotation.x = -1.3 + t * 1.3; }, 'outQuad');
+    await Kit.tween(.42, t => {
+      ball.position.lerpVectors(from, to, t);
+      ball.position.y += Math.sin(t * Math.PI) * .35;
+      if (t > .55 && batter.mode === 'idle') { batter.mode = 'swing'; }
+      if (batter.mode === 'swing') {
+        const k = (t - .55) / .45;
+        batter.hips.rotation.y = -.3 + k * 2.4;
+        batter.arms[1].rotation.set(-2.4 + k * 1.3, 0, -.5 - k * 1.6);
+        batter.arms[0].rotation.set(-2.2 + k * 1.2, 0, .6 - k * .5);
+      }
+    }, 'linear');
+
+    /* ★ CRACK ★ */
+    SFX.crack();
+    st.shake(.18, .86);
+    Kit.puffs(st, { origin: ball.position.clone(), count: 10, color: 0xfff1c0, speed: 3, sizeMin: .3, sizeMax: .9, life: .5, gravity: 0 });
+    murmur.vol(.16, .6);
+    SFX.cheer(2.6);
+    batter.mode = 'idle';
+    Kit.tween(.6, t => { batter.hips.rotation.y = 2.1 - t * 1.5; }, 'outQuad');
+
+    // the flight: a parabola from the plate to the winner's face, with the
+    // whole crowd looking up as it comes in
+    const start = ball.position.clone(), end = seatPos.clone().add(new THREE.Vector3(0, 1.55, 0));
+    const apex = 22;
+    ballGlow.material.opacity = .6;
+    fans.forEach(f => { if (f !== target) setTimeout(() => { f.mode = 'cheer'; }, Kit.rnd(300, 1300)); });
+    await Kit.tween(2.1, t => {
+      ball.position.lerpVectors(start, end, t);
+      ball.position.y += 4 * apex * t * (1 - t);
+      ball.rotation.x += .5; ball.rotation.z += .3;
+      if (Math.random() < .5) Kit.puffs(st, { origin: ball.position.clone(), count: 1, color: 0xffffff, speed: .2, sizeMin: .25, sizeMax: .5, life: .45, gravity: 0, opacity: .5 });
+      const back = new THREE.Vector3().subVectors(start, ball.position).setY(0).normalize();
+      const camPos = ball.position.clone().addScaledVector(back, 7 + (1 - t) * 4).add(new THREE.Vector3(0, 2.4, 0));
+      cam.to(camPos.toArray(), [ball.position.x, ball.position.y, ball.position.z], 6);
+    }, 'linear');
+
+    /* ★ BONK ★ */
+    SFX.bonk(); SFX.scream(1.4);
+    st.shake(.35, .88);
+    ball.visible = false; ballGlow.material.opacity = 0;
+    Kit.puffs(st, { origin: end.clone(), count: 18, color: 0xffd23f, speed: 3.5, sizeMin: .25, sizeMax: .7, life: 1.1, gravity: -1 });
+    Kit.burst(st, { origin: end.clone(), count: 14, size: .06, color: 0xffffff, speed: 3, gravity: -10, life: 1.2, floor: seatPos.y + .05 });
+    target.mode = 'bitten';
+    target.label.material.color.set(0xffd23f);
+    target.label.scale.set(2.8, 1.04, 1);
+    // the hot dog goes flying
+    S.attach(target.dog); S.attach(target.bun);
+    const dogV = new THREE.Vector3(Kit.rnd(-1.5, 1.5), 5, Kit.rnd(1, 3));
+    st.add(dt => { dogV.y -= 12 * dt; [target.dog, target.bun].forEach(m => { m.position.addScaledVector(dogV, dt); m.rotation.x += 8 * dt; }); return target.dog.position.y > -5; });
+    const toward = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), seatPos).setY(0).normalize();
+    cam.to(seatPos.clone().addScaledVector(toward, 5.5).add(new THREE.Vector3(0, 2.2, 0)).toArray(), [seatPos.x, seatPos.y + 1.2, seatPos.z], 3.5);
+    await Kit.wait(650);
+    target.mode = 'knocked';
+    SFX.thud(.3);
+    api.caption('Ball in play. Fan, less so.');
+    murmur.vol(.05, 1.5);
+
+    // jumbotron
+    await Kit.wait(900);
+    jumboKit.draw(winner);
+    SFX.ding(1040); SFX.organ(false);
+    fans.forEach(f => { if (f !== target) f.mode = 'cheer'; });
+    api.caption(null);
+    // Stand on the line from the jumbotron through the fan: the screen then
+    // sits directly behind them in frame wherever their seat is on the arc.
+    const jumboPos = new THREE.Vector3(0, JUMBO.y, -JUMBO.r);
+    const line = new THREE.Vector3().subVectors(seatPos, jumboPos).setY(0).normalize();
+    await Kit.tween(1.6, t => {
+      const p = seatPos.clone().addScaledVector(line, 5 + t * 3).add(new THREE.Vector3(0, 2.2 + t * .8, 0));
+      cam.to(p.toArray(), [seatPos.x, seatPos.y + 1.5 + t * 3.2, seatPos.z], 4);
+    }, 'inOutQuad');
+    await Kit.wait(700);
+    murmur.stop(1);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'foul-ball',
+    kicker: 'Took one for the team',
+    tagline: 'One swing. Whoever it lands on gives the update, once the ringing stops.',
+    goLabel: 'Play ball',
+    againLabel: 'Next batter',
+    verdict: n => `Ball recovered from ${n}, along with most of a hot dog. ${n} goes first.`,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

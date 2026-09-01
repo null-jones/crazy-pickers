@@ -4,7 +4,7 @@
 
    p = People.make({ x, z, facing })       -> adds p.g to nothing; you add it
    People.animate(p, t, dt)                -> poses limbs for p.mode
-   modes: idle | startle | run | shamble | bitten | cheer
+   modes: idle | startle | run | shamble | bitten | cheer | knocked
    ============================================================ */
 window.People = (function () {
   const T = () => window.THREE;
@@ -128,6 +128,14 @@ window.People = (function () {
         H.position.y = Math.abs(Math.sin(tt * 22)) * .14;
         H.rotation.z = Math.sin(tt * 26) * .18;
         L[0].rotation.x = Math.sin(tt * 20) * .4; L[1].rotation.x = -Math.sin(tt * 20) * .4;
+        break;
+      }
+      case 'knocked': {
+        // flat on their back, legs in the air, one slow twitch
+        H.rotation.x = -1.35; H.rotation.z = 0; H.position.y = -.55;
+        L[0].rotation.x = -1.2 + Math.sin(tt * 3) * .12; L[1].rotation.x = -1.35 + Math.cos(tt * 2.6) * .12;
+        A[0].rotation.x = -1.6; A[1].rotation.x = -.4; A[0].rotation.z = -.9; A[1].rotation.z = .9;
+        p.head.rotation.z = Math.sin(tt * 1.4) * .3;
         break;
       }
       case 'cheer': {

@@ -404,6 +404,32 @@ window.SFX = (function () {
       };
     },
 
+    crack() {
+      noise({ dur: .09, freq: 5200, to: 900, type: 'bandpass', Q: 1.2, gain: .55 });
+      tone({ freq: 900, to: 180, dur: .12, type: 'square', gain: .22 });
+      tone({ freq: 2400, dur: .35, type: 'triangle', gain: .08 });
+    },
+
+    // the three-note ballpark organ, then the "charge" rise
+    organ(charge = true) {
+      const seq = [[392, 0], [523.25, .22], [659.25, .44]];
+      seq.forEach(([f, at]) => {
+        tone({ at, freq: f, dur: .3, type: 'square', gain: .09 });
+        tone({ at, freq: f * 2, dur: .3, type: 'sine', gain: .05 });
+      });
+      if (charge) {
+        [[392, .8], [523.25, .95], [659.25, 1.1], [783.99, 1.25], [1046.5, 1.45]].forEach(([f, at]) => {
+          tone({ at, freq: f, dur: at > 1.4 ? .9 : .17, type: 'square', gain: .1 });
+        });
+      }
+    },
+
+    bonk() {
+      tone({ freq: 620, to: 140, dur: .18, type: 'triangle', gain: .32 });
+      tone({ at: .02, freq: 240, to: 70, dur: .25, type: 'sine', gain: .3 });
+      noise({ dur: .08, freq: 1800, to: 400, gain: .25 });
+    },
+
     sadTrombone() {
       const seq = [[311.13, 0], [293.66, 0.22], [277.18, 0.44], [261.63, 0.66]];
       seq.forEach(([f, at]) => tone({ at, freq: f, to: f * 0.97, dur: at === 0.66 ? 0.9 : 0.24, type: 'sawtooth', gain: 0.13, filter: 'lowpass', filterFreq: 900 }));
