@@ -63,6 +63,8 @@ shared/sfx.js           every sound, synthesised from WebAudio primitives
 shared/three-kit.js     stage and render loop, promise tweens, name textures,
                         camera shake, chase camera, debris and smoke
 shared/people.js        low-poly people: idle, run, startle, shamble, cheer
+assets/                 og.png (link preview) and favicon.png, both generated
+tools/og-builder.html   renders the characters into that collage
 vendor/three.global.js  three.js r160 (MIT)
 serve.py                static server that refuses to cache
 ```
@@ -105,6 +107,20 @@ Two things that will bite you:
 - Cameras look down `-Z` but `Object3D.lookAt` aims `+Z` at its target, so the
   rig builds its orientation with `Matrix4.lookAt`. If you roll your own and
   every shot points backwards, that's why.
+
+## Link preview
+
+Slack, Google and the rest read the Open Graph tags on every page, all pointing
+at `assets/og.png`. It's a sticker collage rendered from the actual 3D models,
+not a screenshot. To regenerate it after changing a character:
+
+```sh
+python3 serve.py
+open http://localhost:4173/tools/og-builder.html   # press the button
+```
+
+The dev server accepts the PNGs back over `POST /__save` and writes them into
+`assets/`. Commit the result.
 
 ## three.js
 

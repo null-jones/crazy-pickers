@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OG image builder — Crazy Pickers</title>
+<style>
+  body{margin:0;background:#111;color:#eee;font:14px system-ui;padding:20px}
+  canvas{display:block;max-width:100%;border:1px solid #333;margin:12px 0;background:#222}
+  button{font:600 14px system-ui;padding:10px 16px;border-radius:8px;border:0;background:#ff2e6d;color:#111;cursor:pointer}
+  #log{white-space:pre-wrap;color:#9f9}
+  .stickers{display:flex;gap:10px;flex-wrap:wrap}
+  .stickers canvas{width:140px;height:auto;background:#333}
+</style>
+</head>
+<body>
+<p>Renders the characters as sticker cut-outs and composes the social preview. Run <code>python3 serve.py</code>, open this page, press the button; it writes <code>assets/og.png</code> and <code>assets/favicon.png</code>.</p>
+<button id="go">Build and save</button> <span id="log"></span>
+<div class="stickers" id="stickers"></div>
+<canvas id="out" width="1200" height="630"></canvas>
+<canvas id="fav" width="192" height="192"></canvas>
+
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script>
+(async function () {
+  const THREE = window.THREE;
+  const log = m => { document.getElementById('log').textContent = m; };
+
+  /* ---------- offscreen 3D renderer ---------- */
+  const SZ = 900;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(SZ, SZ); renderer.setPixelRatio(1);
+  renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.35;
+  renderer.shadowMap.enabled = false;
+  const scene = new THREE.Scene();
+  Kit.env({ renderer, scene }, Kit.gradientSky([[0, '#4a3a8a'], [.5, '#ff9ad5'], [1, '#ffe27a']]));
+  const camera = new THREE.PerspectiveCamera(32, 1, .1, 200);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6aa0, 1.0));
+  const key = new THREE.DirectionalLight(0xfff4e0, 2.6); key.position.set(4, 7, 6); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x9fd0ff, 1.2); fill.position.set(-6, 3, 2); scene.add(fill);
+
+  // Render a model to a trimmed transparent canvas. azim/elev in radians.
+  function shoot(model, azim, elev, zoom = 1) {
+    scene.add(model);
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    const dist = size.length() * 1.05 / zoom / Math.tan(camera.fov * Math.PI / 360);
+    camera.position.set(c.x + Math.sin(azim) * Math.cos(elev) * dist, c.y + Math.sin(elev) * dist, c.z + Math.cos(azim) * Math.cos(elev) * dist);
+    camera.lookAt(c);
+    renderer.render(scene, camera);
+    scene.remove(model);
+    const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+    cv.getContext('2d').drawImage(renderer.domElement, 0, 0);
+    return trim(cv);
+  }
+  function trim(cv) {
+    const x = cv.getContext('2d'), d = x.getImageData(0, 0, cv.width, cv.height).data;
+    let x0 = cv.width, y0 = cv.height, x1 = 0, y1 = 0;
+    for (let y = 0; y < cv.height; y++) for (let xx = 0; xx < cv.width; xx++) {
+      if (d[(y * cv.width + xx) * 4 + 3] > 8) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    const out = document.createElement('canvas'); out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+    out.getContext('2d').drawImage(cv, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    return out;
+  }
+  // White die-cut border, the way a sticker sheet does it.
+  function sticker(img, pad = 14) {
+    const sil = document.createElement('canvas'); sil.width = img.width; sil.height = img.height;
+    const sx = sil.getContext('2d'); sx.drawImage(img, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = '#fff'; sx.fillRect(0, 0, sil.width, sil.height);
+    const out = document.createElement('canvas'); out.width = img.width + pad * 2; out.height = img.height + pad * 2;
+    const ox = out.getContext('2d');
+    for (let i = 0; i < 36; i++) { const a = i / 36 * Math.PI * 2; ox.drawImage(sil, pad + Math.cos(a) * pad, pad + Math.sin(a) * pad); ox.drawImage(sil, pad + Math.cos(a) * pad * .5, pad + Math.sin(a) * pad * .5); }
+    ox.drawImage(img, pad, pad);
+    return out;
+  }
+
+  /* ---------- the models (ported from the pickers, posed for a photo) ---------- */
+  function car() {
+    const g = new THREE.Group(), C = 0xff2e6d, paint = { roughness: .3, metalness: .35 };
+    const add = (m, x, y, z) => { m.position.set(x, y, z); g.add(m); return m; };
+    add(Kit.box(4.4, .78, 2.0, C, paint), 0, .82, 0);
+    add(Kit.box(1.5, .34, 1.9, C, paint), 1.5, 1.14, 0);
+    add(Kit.box(2.0, .78, 1.78, 0x141428, { roughness: .1, metalness: .1, transparent: true, opacity: .6 }), -.35, 1.6, 0);
+    add(Kit.box(1.7, .16, 1.72, C, paint), -.35, 2.02, 0);
+    add(Kit.box(.34, .5, 2.05, 0x2b2b38, { roughness: .5, metalness: .4 }), 2.32, .72, 0);
+    [-1, 1].forEach(z => { add(Kit.ball(.19, 0xfff3c4, 16, { emissive: 0xfff0b0, emissiveIntensity: 2.4 }), 2.36, 1.02, z * .66); });
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(1.34, .46, .05), [0, 1, 2, 3].map(() => new THREE.MeshStandardMaterial({ color: 0xdddddd })).concat([
+      new THREE.MeshStandardMaterial({ map: Kit.nameTexture('U GO 1ST', { w: 768, h: 260, bg: '#f3f4ef', fg: '#1b2f6b', border: '#1b2f6b', borderWidth: 18, radius: 16, fill: .8 }).texture }),
+      new THREE.MeshStandardMaterial({ color: 0x888888 })]));
+    plate.rotation.y = Math.PI / 2; add(plate, 2.5, .78, 0);
+    [[1.45, .78], [1.45, -.78], [-1.45, .78], [-1.45, -.78]].forEach(([x, z]) => {
+      const w = Kit.cyl(.52, .52, .38, 0x15151c, 22, { roughness: .85 }); w.rotation.x = Math.PI / 2; add(w, x, .52, z);
+      const h = Kit.cyl(.24, .24, .4, 0xc9c9d6, 12, { roughness: .3, metalness: .8 }); h.rotation.x = Math.PI / 2; add(h, x, .52, z);
+    });
+    return g;
+  }
+
+  function cat() {
+    const g = new THREE.Group(), GINGER = 0xe08c3f, CREAM = 0xf6dcb4, fur = { roughness: .92 };
+    const add = (p, m, x, y, z) => { m.position.set(x, y, z); p.add(m); return m; };
+    const body = add(g, Kit.ball(.78, GINGER, 28, fur), 0, .8, 0); body.scale.set(1.1, 1.0, 1.15);
+    add(g, Kit.ball(.55, CREAM, 22, fur), 0, .68, .48).scale.set(.9, 1, .7);
+    for (let i = 0; i < 4; i++) { const s = add(g, Kit.box(.5 - i * .06, .1, .5, 0xa85f22, fur), 0, 1.22 - i * .22, -.55 + i * .05); s.rotation.x = .2; }
+    const head = new THREE.Group(); head.position.set(0, 1.45, .55); head.rotation.x = .9; g.add(head);   // mid-heave
+    add(head, Kit.ball(.52, GINGER, 28, fur), 0, 0, 0);
+    add(head, Kit.ball(.3, CREAM, 20, fur), 0, -.16, .38).scale.set(1.2, .78, .9);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(.075, .09, 8), new THREE.MeshStandardMaterial({ color: 0xff9bb0 })); nose.rotation.x = Math.PI / 2; add(head, nose, 0, -.08, .66);
+    const mouth = new THREE.Mesh(new THREE.SphereGeometry(.2, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x5c1524, side: THREE.DoubleSide }));
+    mouth.rotation.x = Math.PI * .85; mouth.scale.setScalar(1.2); add(head, mouth, 0, -.26, .52);
+    [-1, 1].forEach(sx => {
+      add(head, Kit.ball(.13, 0xd8f24a, 18, { roughness: .18 }), sx * .22, .1, .42).scale.set(1, 1, .6);
+      add(head, Kit.ball(.055, 0x120c12, 12, {}), sx * .22, .1, .53).scale.set(.45, 1.15, 1);
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(.2, .38, 4), new THREE.MeshStandardMaterial({ color: GINGER, flatShading: true })); ear.rotation.z = sx * .22; add(head, ear, sx * .32, .52, -.02);
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(.11, .24, 4), new THREE.MeshStandardMaterial({ color: 0xf6a6bb, flatShading: true })); inner.rotation.z = sx * .22; add(head, inner, sx * .32, .52, .07);
+      for (let k = -1; k <= 1; k++) { const w = Kit.cyl(.008, .008, .8, 0xfdf2e0, 5, {}); w.rotation.z = Math.PI / 2 + sx * (.25 + k * .18); w.rotation.y = sx * .5; add(head, w, sx * .28, -.14 + k * .07, .5); }
+      add(g, Kit.ball(.19, CREAM, 16, fur), sx * .34, .19, .78).scale.set(1, .72, 1.4);
+      add(g, Kit.ball(.24, GINGER, 16, fur), sx * .56, .24, -.42).scale.set(1, .8, 1.1);
+    });
+    for (let i = 0; i < 9; i++) { const k = i / 8; add(g, Kit.ball(.15 - i * .008, i % 2 ? 0xa85f22 : GINGER, 14, fur), Math.sin(k * 2.6) * .35, .42 + k * 1.3 - k * k * .35, -.9 - k * .72); }
+    return g;
+  }
+
+  function lumpGeometry(r, bumps) {
+    const g = new THREE.IcosahedronGeometry(r, 2), p = g.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const n = Math.sin(v.x * bumps) * Math.cos(v.y * bumps) * Math.sin(v.z * bumps); v.multiplyScalar(1 + n * .22 + Math.random() * .06); p.setXYZ(i, v.x, v.y, v.z); }
+    g.computeVertexNormals(); return g;
+  }
+  function hairball() {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(lumpGeometry(.34, 7), new THREE.MeshStandardMaterial({ color: 0x7c5330, roughness: .95, flatShading: true })));
+    g.add(new THREE.Mesh(lumpGeometry(.37, 5), new THREE.MeshStandardMaterial({ color: 0x8fd14a, roughness: .12, transparent: true, opacity: .6 })));
+    for (let i = 0; i < 26; i++) { const s = Kit.cyl(.004, .012, .12 + Math.random() * .18, 0x6a4526, 4, {}); const d = new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize(); s.position.copy(d.clone().multiplyScalar(.33)); s.lookAt(d.clone().multiplyScalar(2)); s.rotateX(Math.PI / 2); g.add(s); }
+    return g;
+  }
+
+  function toilet() {
+    const g = new THREE.Group(), P = { color: 0xfbfdff, roughness: .12, metalness: .04 };
+    const add = (m, x, y, z) => { m.position.set(x, y, z); g.add(m); return m; };
+    add(Kit.cyl(1.15, 1.5, 1.5, 0xfbfdff, 28, P), 0, .75, 0);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.72, 1.12, .95, 40, 1, true), new THREE.MeshStandardMaterial(Object.assign({ side: THREE.DoubleSide }, P))); add(bowl, 0, 1.52, 0);
+    add(Kit.cyl(1.12, .34, .5, 0xfbfdff, 32, P), 0, .8, 0);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.72, .14, 14, 44), new THREE.MeshStandardMaterial(P)); rim.rotation.x = Math.PI / 2; add(rim, 0, 2.0, 0);
+    add(Kit.box(2.5, 1.9, 1.0, 0xfbfdff, P), 0, 2.6, -1.85);
+    add(Kit.box(2.66, .18, 1.16, 0xfbfdff, P), 0, 3.62, -1.85);
+    const lid = Kit.box(2.9, .16, 2.4, 0xe9eef2, { roughness: .25 }); lid.rotation.x = -1.15; add(lid, 0, 3.0, -1.3);
+    const handle = Kit.cyl(.11, .11, .5, 0xd8c07a, 14, { roughness: .25, metalness: .85 }); handle.rotation.z = Math.PI / 2; add(handle, -1.42, 3.15, -1.6);
+    add(Kit.cyl(1.6, 1.05, .9, 0x2fb6c9, 44, { roughness: .06, metalness: .25, transparent: true, opacity: .85 }), 0, 1.15, 0);
+    ['U', 'NOT U', 'LOL'].forEach((t, i) => {
+      const a = i / 3 * Math.PI * 2 + .6, r = .95;
+      const paper = new THREE.Mesh(new THREE.PlaneGeometry(.92, .52), new THREE.MeshStandardMaterial({ map: Kit.nameTexture(t, { w: 512, h: 288, bg: '#fffdf3', fg: '#16324a', fill: .8 }).texture, side: THREE.DoubleSide }));
+      paper.rotation.set(-Math.PI / 2, 0, -a + Math.PI / 2); add(paper, Math.cos(a) * r, 1.66, Math.sin(a) * r);
+    });
+    return g;
+  }
+
+  function batter() {
+    const p = People.make({ x: 0, y: 0, z: 0, facing: 0, shirt: 0x2f5fb0, legs: 0xf2f2f2, scale: 1 });
+    const bat = Kit.cyl(.035, .06, 1.05, 0xd9a866, 10, {}); bat.position.set(0, -.95, 0); p.arms[1].add(bat);
+    const cap = Kit.cyl(.19, .19, .1, 0x1f3f8a, 12, {}); cap.position.y = 1.62; p.hips.add(cap);
+    p.hips.rotation.y = 1.9; p.arms[1].rotation.set(-1.4, 0, -1.9); p.arms[0].rotation.set(-1.2, 0, .2);
+    p.legPivots[0].rotation.x = -.5; p.legPivots[1].rotation.x = .35;
+    return p.g;
+  }
+  function zombie() {
+    const p = People.make({ x: 0, y: 0, z: 0, facing: 0, scale: 1 });
+    People.zombify(p); People.animate(p, 1.3, .016);
+    return p.g;
+  }
+  function baseball() { return Kit.ball(.6, 0xffffff, 24, { roughness: .5 }); }
+
+  /* ---------- the collage ---------- */
+  const W = 1200, H = 630, S = 2;                          // render at 2x, downscale
+  const big = document.createElement('canvas'); big.width = W * S; big.height = H * S;
+  const x = big.getContext('2d'); x.scale(S, S);
+  const IMPACT = "Impact, 'Arial Black', sans-serif", EMOJI = "'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+
+  function bg() {
+    const g = x.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#ff2e6d'); g.addColorStop(.35, '#ff9a1f'); g.addColorStop(.62, '#ffe600'); g.addColorStop(1, '#2ee6ff');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    // sunburst
+    x.save(); x.translate(W * .5, H * .45); x.globalAlpha = .18; x.fillStyle = '#fff';
+    for (let i = 0; i < 28; i++) { x.rotate(Math.PI * 2 / 28); x.beginPath(); x.moveTo(0, 0); x.lineTo(1400, -40); x.lineTo(1400, 40); x.fill(); }
+    x.restore();
+    // halftone
+    x.fillStyle = 'rgba(0,0,0,.14)';
+    for (let i = 0; i < W; i += 22) for (let j = 0; j < H; j += 22) { const r = 1 + (i / W) * 5; x.beginPath(); x.arc(i + (j % 44 ? 11 : 0), j, r, 0, 7); x.fill(); }
+    // sparkles
+    for (let i = 0; i < 40; i++) star(Math.random() * W, Math.random() * H, 6 + Math.random() * 16, '#fff', .85);
+  }
+  function star(cx, cy, r, col, alpha = 1, points = 4) {
+    x.save(); x.translate(cx, cy); x.globalAlpha = alpha; x.fillStyle = col; x.beginPath();
+    for (let i = 0; i < points * 2; i++) { const rr = i % 2 ? r * .28 : r, a = i / (points * 2) * Math.PI * 2; x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    x.closePath(); x.fill(); x.restore();
+  }
+  function place(img, cx, cy, w, rot, shadow = true) {
+    const h = img.height * w / img.width;
+    x.save(); x.translate(cx, cy); x.rotate(rot);
+    if (shadow) { x.shadowColor = 'rgba(0,0,0,.45)'; x.shadowBlur = 18; x.shadowOffsetY = 10; }
+    x.drawImage(img, -w / 2, -h / 2, w, h); x.restore();
+  }
+  function bigText(t, cx, cy, size, rot, fill, stroke, lw, chroma) {
+    x.save(); x.translate(cx, cy); x.rotate(rot); x.font = `${size}px ${IMPACT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    if (chroma) { x.fillStyle = '#2ee6ff'; x.fillText(t, -7, 5); x.fillStyle = '#ff2e6d'; x.fillText(t, 7, -5); }
+    x.lineJoin = 'round'; x.lineWidth = lw; x.strokeStyle = stroke; x.strokeText(t, 0, 0);
+    x.fillStyle = fill; x.fillText(t, 0, 0); x.restore();
+  }
+  function tape(t, cx, cy, rot, bgc, fgc, size = 26) {
+    x.save(); x.translate(cx, cy); x.rotate(rot); x.font = `700 ${size}px ${IMPACT}`;
+    const w = x.measureText(t).width + 34, h = size * 1.6;
+    x.shadowColor = 'rgba(0,0,0,.35)'; x.shadowBlur = 10; x.shadowOffsetY = 6;
+    x.fillStyle = bgc; x.fillRect(-w / 2, -h / 2, w, h); x.shadowColor = 'transparent';
+    x.fillStyle = fgc; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 0, 2); x.restore();
+  }
+  function burst(t, cx, cy, r, rot, bgc, fgc, size) {
+    x.save(); x.translate(cx, cy); x.rotate(rot);
+    x.shadowColor = 'rgba(0,0,0,.4)'; x.shadowBlur = 16; x.shadowOffsetY = 8;
+    x.fillStyle = bgc; x.beginPath();
+    for (let i = 0; i < 32; i++) { const rr = i % 2 ? r * .82 : r, a = i / 32 * Math.PI * 2; x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    x.closePath(); x.fill(); x.shadowColor = 'transparent';
+    x.fillStyle = fgc; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const lines = t.split('\n'); lines.forEach((l, i) => { x.font = `${size}px ${IMPACT}`; x.fillText(l, 0, (i - (lines.length - 1) / 2) * size * 1.05); });
+    x.restore();
+  }
+  // Colour-emoji glyphs inherit the fillStyle's alpha in Chrome, so reset it:
+  // the halftone pass leaves fillStyle at 14% black and the emoji come out as ghosts.
+  function emoji(e, cx, cy, size, rot) { x.save(); x.translate(cx, cy); x.rotate(rot); x.fillStyle = '#000'; x.font = `${size}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(e, 0, 0); x.restore(); }
+
+  async function build() {
+    log('rendering characters…');
+    const shots = {
+      car: sticker(shoot(car(), -.7, .28, 1.05)),
+      cat: sticker(shoot(cat(), .35, .18, 1.0)),
+      hair: sticker(shoot(hairball(), .4, .2, 1.0), 8),
+      toilet: sticker(shoot(toilet(), .55, .3, 1.0)),
+      batter: sticker(shoot(batter(), .6, .12, 1.0)),
+      zombie: sticker(shoot(zombie(), -.4, .1, 1.0)),
+      ball: sticker(shoot(baseball(), 0, 0, 1.0), 6)
+    };
+    const strip = document.getElementById('stickers'); strip.innerHTML = '';
+    Object.values(shots).forEach(c => strip.appendChild(c));
+
+    log('composing…');
+    bg();
+    // characters
+    place(shots.car, 250, 470, 470, -.16);
+    place(shots.toilet, 1010, 430, 300, .1);
+    place(shots.cat, 940, 165, 290, .12);
+    place(shots.hair, 745, 160, 92, .6);
+    place(shots.batter, 630, 470, 230, -.06);
+    place(shots.ball, 462, 392, 46, 0);
+    place(shots.zombie, 95, 190, 160, -.2);
+    // motion lines off the hairball and the ball
+    x.save(); x.strokeStyle = '#fff'; x.lineWidth = 6; x.lineCap = 'round';
+    [[800, 130, 860, 118], [805, 165, 870, 170], [795, 195, 850, 212]].forEach(([a, b, c, d]) => { x.beginPath(); x.moveTo(a, b); x.lineTo(c, d); x.stroke(); });
+    [[395, 380, 430, 384], [392, 402, 428, 400], [400, 422, 434, 414]].forEach(([a, b, c, d]) => { x.beginPath(); x.moveTo(a, b); x.lineTo(c, d); x.stroke(); });
+    x.restore();
+    // title
+    bigText('CRAZY', 470, 130, 150, -.07, '#ffe600', '#14121f', 22, true);
+    bigText('PICKERS', 520, 265, 150, -.07, '#fff', '#14121f', 22, true);
+    // stickers and tape
+    burst('WHO\nGOES\nFIRST?!', 1085, 300, 108, .18, '#14121f', '#ffe600', 34);
+    tape('NO THOUGHTS. JUST PICKS.', 300, 345, -.12, '#14121f', '#2ee6ff', 24);
+    tape('12 WAYS TO RUIN STANDUP', 690, 375, .08, '#fff', '#14121f', 22);
+    tape('100% RANDOM', 150, 590, -.05, '#ffe600', '#14121f', 24);
+    tape('3D · SOUND ON · NO BUILD STEP', 760, 590, .04, '#ff2e6d', '#fff', 20);
+    // url pill
+    x.save(); x.font = `700 26px ${IMPACT}`; const u = 'elliej.dev/crazy-pickers', uw = x.measureText(u).width + 40;
+    x.fillStyle = '#14121f'; x.beginPath(); x.roundRect(W - uw - 24, H - 62, uw, 46, 23); x.fill();
+    x.fillStyle = '#fff'; x.textBaseline = 'middle'; x.fillText(u, W - uw - 4, H - 39); x.restore();
+    // emoji chaos
+    [['💀', 60, 60, 54, -.3], ['🔥', 1150, 70, 60, .2], ['😵‍💫', 400, 30, 46, .3], ['⚾', 720, 300, 40, 0], ['🧟', 40, 320, 44, .2], ['🚨', 1170, 560, 44, -.2], ['💥', 560, 200, 52, .1]].forEach(a => emoji(...a));
+
+    // downscale to 1200x630
+    const out = document.getElementById('out'), ox = out.getContext('2d');
+    ox.imageSmoothingQuality = 'high'; ox.clearRect(0, 0, W, H); ox.drawImage(big, 0, 0, W, H);
+
+    // favicon: the batter's head would be mush at 16px, so a face on a gradient
+    const fav = document.getElementById('fav'), fx = fav.getContext('2d');
+    const fg = fx.createLinearGradient(0, 0, 192, 192); fg.addColorStop(0, '#ff2e6d'); fg.addColorStop(1, '#ffe600');
+    fx.fillStyle = fg; fx.beginPath(); fx.roundRect(0, 0, 192, 192, 44); fx.fill();
+    fx.font = `140px ${EMOJI}`; fx.textAlign = 'center'; fx.textBaseline = 'middle'; fx.fillText('🤪', 96, 104);
+
+    log('saving…');
+    const save = async (cv, name) => {
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      const res = await fetch('/__save?name=' + name, { method: 'POST', body: blob });
+      return res.ok ? await res.text() : 'FAILED ' + res.status;
+    };
+    const a = await save(out, 'og.png'), b = await save(fav, 'favicon.png');
+    log(a + b);
+    window.__built = true;
+  }
+  document.getElementById('go').onclick = build;
+  if (/[?&]auto/.test(location.search)) build();
+})();
+</script>
+</body>
+</html>
