@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kaiju Rampage — Crazy Pickers</title>
+<meta name="description" content="A city of names. A lizard the size of a tower block. One building left standing. One of fifteen unhinged 3D standup name pickers.">
+<link rel="canonical" href="https://elliej.dev/crazy-pickers/pickers/kaiju-rampage.html">
+<meta name="theme-color" content="#05060c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Crazy Pickers">
+<meta property="og:title" content="Kaiju Rampage — Crazy Pickers">
+<meta property="og:description" content="A city of names. A lizard the size of a tower block. One building left standing. One of fifteen unhinged 3D standup name pickers.">
+<meta property="og:url" content="https://elliej.dev/crazy-pickers/pickers/kaiju-rampage.html">
+<meta property="og:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crazy Pickers: a chaotic sticker collage of a crashing car, a cat coughing up a hairball, a toilet, a batter and a zombie, with the words WHO GOES FIRST?!">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kaiju Rampage — Crazy Pickers">
+<meta name="twitter:description" content="A city of names. A lizard the size of a tower block. One building left standing. One of fifteen unhinged 3D standup name pickers.">
+<meta name="twitter:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Kaiju Rampage</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.2, far: 900 });
+  const S = st.scene;
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // dusk over the harbour; the city looks out to sea (-Z)
+  const sky = Kit.gradientSky([[0, '#0b0822'], [.28, '#261a54'], [.42, '#6c2f63'], [.48, '#e2663a'], [.5, '#ffc27a'], [.53, '#3a2238'], [1, '#0e0a14']]);
+  S.background = sky;
+  Kit.env(st, sky, .8);
+  S.fog = new THREE.Fog(0x5a2f4a, 120, 520);
+
+  S.add(new THREE.AmbientLight(0x8f86c8, .6));
+  S.add(new THREE.HemisphereLight(0xffa98a, 0x1a1428, .75));
+  const sun = new THREE.DirectionalLight(0xff9a5a, 2.1);
+  sun.position.set(-40, 55, -150); sun.target.position.set(0, 0, -10); S.add(sun.target);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 10, far: 360 });
+  sun.shadow.bias = -0.0006;
+  S.add(sun);
+  const fill = new THREE.DirectionalLight(0xb9c4ff, 1.7);
+  fill.position.set(50, 60, 110); S.add(fill);
+  // runtime light, created up front so nothing recompiles mid-run
+  const beamLight = new THREE.PointLight(0x6fe0ff, 0, 90, 1.5);
+  S.add(beamLight);
+
+  /* ---------- harbour and ground ---------- */
+  const QUAY_Z = -52, WATER_Y = -2;
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 440), new THREE.MeshStandardMaterial({ color: 0x1b2f4a, roughness: .16, metalness: .4 }));
+  water.rotation.x = -Math.PI / 2; water.position.set(0, WATER_Y, QUAY_Z - 220); S.add(water);
+  const quay = Kit.box(320, 4, 2, 0x6b6670, { roughness: .9 }); quay.position.set(0, -1, QUAY_Z); S.add(quay);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(320, 220), new THREE.MeshStandardMaterial({ color: 0x4a4854, roughness: .95 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, QUAY_Z + 110); ground.receiveShadow = true; S.add(ground);
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x23222a, roughness: .9 });
+  function flat(w, d, x, z, mat, y = .02) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true; S.add(m); return m;
+  }
+  flat(9, 220, 0, QUAY_Z + 110, roadMat);
+  [-33, -23, -13, -3, 7].forEach(z => flat(56, 3.2, 0, z, roadMat, .015));
+  // lane markings: one instanced draw
+  const dash = new THREE.InstancedMesh(new THREE.PlaneGeometry(.25, 2.2), new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: .7 }), 40);
+  const _d = new THREE.Object3D();
+  for (let i = 0; i < 40; i++) { _d.position.set(0, .03, QUAY_Z + 3 + i * 5); _d.rotation.set(-Math.PI / 2, 0, 0); _d.updateMatrix(); dash.setMatrixAt(i, _d.matrix); }
+  S.add(dash);
+
+  /* ---------- facades ---------- */
+  // One window pattern, as a wall map and a matching lit-window emissive map.
+  // A texture tile covers 4x4 world units; facadeBox scales UVs to match.
+  const WIN = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) WIN.push({ r, c, lit: Math.random() < .5, warm: Math.random() < .75 });
+  function windowTex(emissive) {
+    const [cv, x] = Kit.makeCanvas(256, 256);
+    x.fillStyle = emissive ? '#000' : '#d6d2da'; x.fillRect(0, 0, 256, 256);
+    WIN.forEach(w => {
+      const px = w.c * 51.2 + 11, py = w.r * 64 + 14;
+      x.fillStyle = emissive ? (w.lit ? (w.warm ? '#ffcf8a' : '#bfe4ff') : '#000') : (w.lit ? '#fff0c8' : '#2b2f3e');
+      x.fillRect(px, py, 29, 38);
+    });
+    const t = Kit.texFromCanvas(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }
+  const wallTex = windowTex(false), litTex = windowTex(true);
+  function facadeBox(w, h, d) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    const uv = g.attributes.uv, n = g.attributes.normal;
+    for (let i = 0; i < uv.count; i++) {
+      const across = Math.abs(n.getX(i)) > .5 ? d : w;
+      uv.setXY(i, uv.getX(i) * across / 4, uv.getY(i) * h / 4);
+    }
+    return g;
+  }
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x34323d, roughness: .9 });
+
+  // anonymous skyline: three height classes, one instanced draw each
+  const fillerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: wallTex, emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: .5, roughness: .85 });
+  const CLASSES = [{ h: 5, spots: [] }, { h: 13, spots: [] }, { h: 24, spots: [] }];
+  for (let x = -81; x <= 81; x += 9) for (let z = -46; z <= 118; z += 9) {
+    const ax = Math.abs(x);
+    if (ax < 7) continue;                                    // the avenue
+    if (ax < 27 && z < 14) continue;                         // the named blocks
+    if (Math.random() < .12) continue;
+    const cls = ax < 27 ? 0 : (Math.random() < .45 ? 1 : Math.random() < .6 ? 2 : 0);
+    CLASSES[cls].spots.push([x + Kit.rnd(-.8, .8), z + Kit.rnd(-.8, .8)]);
+  }
+  const col = new THREE.Color();
+  const occluders = [];
+  const tints = [0x4d4a5c, 0x5b504c, 0x46505c, 0x5a5462, 0x4a5448];
+  CLASSES.forEach(c => {
+    const im = new THREE.InstancedMesh(facadeBox(6, c.h, 6), [fillerMat, fillerMat, roofMat, roofMat, fillerMat, fillerMat], c.spots.length);
+    c.spots.forEach(([x, z], i) => {
+      const s = Kit.rnd(.85, 1.15);
+      _d.position.set(x, c.h * s / 2, z); _d.rotation.set(0, 0, 0); _d.scale.set(Kit.rnd(.9, 1.1), s, Kit.rnd(.9, 1.1)); _d.updateMatrix();
+      im.setMatrixAt(i, _d.matrix);
+      im.setColorAt(i, col.set(Kit.pickOne(tints)));
+    });
+    im.castShadow = im.receiveShadow = true;
+    S.add(im); occluders.push(im);
+  });
+  // first camera position with a clear line to `look` (the skyline gets in the way on the outer blocks)
+  const ray = new THREE.Raycaster();
+  function clearShot(look, cands) {
+    for (const c of cands) {
+      const dir = c.clone().sub(look), len = dir.length();
+      ray.set(look, dir.normalize()); ray.far = len;
+      if (!ray.intersectObjects(occluders, false).length) return c;
+    }
+    return cands[cands.length - 1];
+  }
+
+  /* ---------- the named buildings ---------- */
+  const COLS = [-20.5, -11.5, 11.5, 20.5], ROWS = [-38, -28, -18, -8, 2];
+  const SLOTS = [];
+  ROWS.forEach(z => COLS.forEach(x => SLOTS.push([x, z])));
+  const PALETTE = [0xd08560, 0x7394c0, 0xe0c890, 0x92b88c, 0xbe8fbb, 0xe8a85c, 0x83c0c0, 0xd4787a];
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x57545f, roughness: .95 });
+  SLOTS.forEach(([x, z]) => flat(7.2, 7.2, x, z, sidewalkMat, .01));
+  const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x4a4550, roughness: 1, flatShading: true });
+  const ROCK = new THREE.DodecahedronGeometry(1, 0);
+
+  let buildings = [], rubble = [];
+  function makeBuilding(name, x, z) {
+    const w = Kit.rnd(4.3, 5), d = Kit.rnd(4.3, 5), h = Kit.rnd(6.5, 10.5);
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const mat = new THREE.MeshStandardMaterial({ color: Kit.pickOne(PALETTE), map: wallTex, emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: 1, roughness: .8 });
+    const body = new THREE.Mesh(facadeBox(w, h, d), [mat, mat, roofMat, roofMat, mat, mat]);
+    body.position.y = h / 2; body.castShadow = body.receiveShadow = true; g.add(body);
+    const ledge = Kit.box(w + .3, .35, d + .3, 0x2c2a33, { roughness: .9 }); ledge.position.y = h + .17; g.add(ledge);
+    const tank = Kit.cyl(.6, .6, 1.2, 0x6a5440, 10, { roughness: .9 }); tank.position.set(Kit.rnd(-1, 1), h + .95, Kit.rnd(-1, 1)); g.add(tank);
+    const label = Kit.label(st, name, { height: 1.5, minScreen: .03 });
+    label.position.y = h + 3; g.add(label);
+    S.add(g);
+    return { g, name, w, d, h, x, z, mat, label, alive: true };
+  }
+  function addRubble(x, z, w, d, y = 0) {
+    for (let i = 0; i < 6; i++) {
+      const r = new THREE.Mesh(ROCK, rubbleMat);
+      const s = Kit.rnd(.9, 1.8);
+      r.scale.set(s, s * .6, s);
+      r.position.set(x + Kit.rnd(-w, w) * .4, y + s * .25, z + Kit.rnd(-d, d) * .4);
+      r.rotation.set(Kit.rnd(0, 3), Kit.rnd(0, 3), Kit.rnd(0, 3));
+      r.castShadow = r.receiveShadow = true;
+      S.add(r); rubble.push(r);
+    }
+  }
+  function buildCity() {
+    buildings.forEach(b => { b.label.dispose(); S.remove(b.g); b.mat.dispose(); });
+    rubble.forEach(r => S.remove(r)); rubble = [];
+    const names = Roster.all();
+    // fill from the middle rows out so small teams sit where the action is
+    const order = SLOTS.slice().sort((a, b) => (Math.abs(a[1] + 18) + Math.random() * 14) - (Math.abs(b[1] + 18) + Math.random() * 14));
+    buildings = names.map((n, i) => makeBuilding(n, order[i][0], order[i][1]));
+  }
+  buildCity();
+
+  /* ---------- the kaiju ---------- */
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0x5a6e55, roughness: .72, flatShading: true });
+  const bellyMat = new THREE.MeshStandardMaterial({ color: 0xa39571, roughness: .8, flatShading: true });
+  const spineMat = new THREE.MeshStandardMaterial({ color: 0xcfeeff, roughness: .35, emissive: 0x3fc8ff, emissiveIntensity: .25, flatShading: true });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xfff2a0, emissive: 0xffc02a, emissiveIntensity: 2.4 });
+  const toothMat = new THREE.MeshStandardMaterial({ color: 0xf1ecd6, roughness: .5 });
+  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x6a1c26, roughness: .7 });
+  const SPH = new THREE.IcosahedronGeometry(1, 1), CONE = new THREE.ConeGeometry(1, 1, 4);
+  function blob(parent, mat, p, s, r) {
+    const m = new THREE.Mesh(SPH, mat);
+    m.position.set(p[0], p[1], p[2]); m.scale.set(s[0], s[1], s[2]);
+    if (r) m.rotation.set(r[0], r[1], r[2]);
+    m.castShadow = true; parent.add(m); return m;
+  }
+  function spike(parent, p, s, r, mat) {
+    const m = new THREE.Mesh(CONE, mat || spineMat);
+    m.position.set(p[0], p[1], p[2]); m.scale.set(s[0], s[1], s[2]); m.rotation.set(r[0], r[1], r[2]);
+    m.castShadow = true; parent.add(m); return m;
+  }
+
+  const K = new THREE.Group(); S.add(K);
+  const HIP_Y = 11.2;
+  const hips = new THREE.Group(); hips.position.y = HIP_Y; K.add(hips);
+  const torso = new THREE.Group(); torso.rotation.x = .12; hips.add(torso);
+  blob(torso, skinMat, [0, 6, 0], [5.2, 8, 4.8]);
+  blob(torso, bellyMat, [0, 5, 2.7], [3.9, 6.6, 2.6]);
+  blob(torso, skinMat, [0, 11.6, 1.4], [3.5, 3.1, 3.5]);            // neck
+  const headG = new THREE.Group(); headG.position.set(0, 13.3, 2.4); torso.add(headG);
+  blob(headG, skinMat, [0, .9, 1.4], [2.5, 2.2, 2.8]);
+  blob(headG, skinMat, [0, .5, 3.9], [2.1, 1.45, 2.4]);
+  blob(headG, skinMat, [0, 1.95, 2.7], [2.3, .7, 1.6]);
+  [-1, 1].forEach(sx => {
+    const e = new THREE.Mesh(SPH, eyeMat); e.scale.setScalar(.42); e.position.set(sx * 1.55, 1.6, 3.4); headG.add(e);
+    for (let i = 0; i < 6; i++) {
+      const z = 2.5 + i * .62;
+      spike(headG, [sx * (1.75 - i * .16), -.7, z], [.2, .55, .2], [Math.PI, 0, 0], toothMat);
+    }
+  });
+  const jaw = new THREE.Group(); jaw.position.set(0, -.35, 1.2); headG.add(jaw);
+  blob(jaw, skinMat, [0, -.65, 2.3], [2, .8, 2.9]);
+  blob(jaw, mouthMat, [0, -.2, 2.4], [1.65, .32, 2.5]);
+  [-1, 1].forEach(sx => { for (let i = 0; i < 5; i++) spike(jaw, [sx * (1.5 - i * .17), .05, 1.6 + i * .66], [.17, .45, .17], [0, 0, 0], toothMat); });
+
+  const arms = [-1, 1].map(sx => {
+    const a = new THREE.Group(); a.position.set(sx * 4.2, 9.6, 2.2); a.rotation.set(-.9, 0, sx * .25); torso.add(a);
+    blob(a, skinMat, [0, -1.6, 0], [1.05, 2.1, 1.05]);
+    const fore = new THREE.Group(); fore.position.set(0, -3.2, 0); fore.rotation.x = -.6; a.add(fore);
+    blob(fore, skinMat, [0, -1.4, 0], [.85, 1.8, .85]);
+    [-.35, 0, .35].forEach(dx => spike(fore, [dx, -3.2, .25], [.2, .7, .2], [Math.PI, 0, 0], toothMat));
+    return { a, fore, sx };
+  });
+  const legs = [-1, 1].map(sx => {
+    const l = new THREE.Group(); l.position.set(sx * 3.3, 0, .2); hips.add(l);
+    blob(l, skinMat, [0, -2.2, .4], [2.9, 4.4, 3.4]);
+    blob(l, skinMat, [0, -7, -.2], [1.75, 3.6, 1.85]);
+    blob(l, skinMat, [0, -10.3, 1.3], [2.2, .9, 3.2]);
+    [-.9, 0, .9].forEach(dx => spike(l, [dx, -10.5, 4.5], [.32, .9, .32], [Math.PI / 2, 0, 0], toothMat));
+    return l;
+  });
+  // back spines, three rows, biggest over the shoulders
+  for (let j = 0; j < 7; j++) {
+    const y = 12.5 - j * 1.9;
+    const zb = -4.8 * Math.sqrt(Math.max(0, 1 - Math.pow((y - 6) / 8, 2)));
+    const size = 1.3 + 2.6 * Math.sin(Math.PI * (j + 1.5) / 8.5);
+    const dir = V3(0, .5, -.87);
+    spike(torso, [0, y + dir.y * size * .4, zb + dir.z * size * .4], [size * .55, size, .3], [-1.05, 0, 0]);
+    [-1, 1].forEach(sx => spike(torso, [sx * 1.4, y - .3 + dir.y * size * .25, zb + .5 + dir.z * size * .25], [size * .35, size * .62, .22], [-1.0, 0, sx * .35]));
+  }
+  // tail: a chain of segments, each parented to the last
+  const TAIL_PITCH = [-.5, -.28, -.14, -.02, .22, .26, .2, .14, .08, .04];
+  const tail = [];
+  {
+    let parent = new THREE.Group(); parent.position.set(0, 1.2, -3.8); hips.add(parent);
+    for (let i = 0; i < 10; i++) {
+      const seg = new THREE.Group();
+      seg.position.z = i === 0 ? 0 : -3.1;
+      seg.rotation.x = TAIL_PITCH[i];
+      const r = 2.7 * (1 - i / 10.5) + .25;
+      blob(seg, skinMat, [0, 0, -1.55], [r, r * .9, 2.1]);
+      spike(seg, [0, r * .85, -1.3], [r * .35 + .15, r * .55 + .3, .22], [-.6, 0, 0]);
+      parent.add(seg); tail.push(seg); parent = seg;
+    }
+  }
+
+  // pose state, driven by the loop below
+  const kz = { phase: 0, stepSign: 0, walking: false, sway: 1, spinLag: 0, jaw: 0, glow: .25, lean: .12, headTilt: 0 };
+  function setJaw(v) { kz.jaw = v; }
+  function footWorld(i) { return legs[i].localToWorld(V3(0, -10.8, 1.3)); }
+  function mouthWorld() { return headG.localToWorld(V3(0, -.3, 5.8)); }
+  function faceTo(x, z) { return Math.atan2(x - K.position.x, z - K.position.z); }
+  function yawLerp(a, b, k) { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * k; }
+  function groundY(z) { const k = THREE.MathUtils.smoothstep(z, QUAY_Z - 6, QUAY_Z + 2); return -5 * (1 - k); }
+
+  /* ---------- ambience ---------- */
+  let tt = 0, idling = true;
+  const IDLE_Z = -110;
+  st.add(dt => {
+    tt += dt;
+    // legs: symmetric swing, hips dropped so both feet stay on the ground
+    const sw = Math.sin(kz.phase) * .42;
+    legs[0].rotation.x = sw; legs[1].rotation.x = -sw;
+    hips.position.y = HIP_Y * Math.cos(sw);
+    hips.rotation.z = Math.sin(kz.phase) * .04;
+    torso.rotation.x = kz.lean + Math.sin(tt * 1.3) * .015;
+    headG.rotation.x = kz.headTilt + Math.sin(tt * 1.1) * .03;
+    jaw.rotation.x = kz.jaw;
+    tail.forEach((seg, i) => { seg.rotation.y = Math.sin(tt * 1.4 - i * .5) * .07 * kz.sway + kz.spinLag * (i + 1) / 10; });
+    spineMat.emissiveIntensity = kz.glow;
+    if (idling) {
+      // just the spines, gliding along the harbour like a very large fin
+      const x = Math.sin(tt * .12) * 30;
+      K.position.set(x, -25.5, IDLE_Z);
+      K.rotation.y = Math.cos(tt * .12) >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      st.look([Math.sin(tt * .07) * 34, 24, 22 + Math.cos(tt * .07) * 8], [0, 3, -20]);
+    }
+    return true;
+  });
+
+  /* ---------- movement ---------- */
+  const STRIDE = 8;
+  // walk in a straight line; onStep(k) runs every frame, footfalls stomp
+  function walkTo(x, z, speed, onFrame) {
+    return new Promise(resolve => {
+      kz.walking = true;
+      st.add(dt => {
+        const dx = x - K.position.x, dz = z - K.position.z, dist = Math.hypot(dx, dz);
+        const step = Math.min(dist, speed * dt);
+        if (dist > .01) {
+          K.rotation.y = yawLerp(K.rotation.y, Math.atan2(dx, dz), 1 - Math.exp(-6 * dt));
+          K.position.x += dx / dist * step; K.position.z += dz / dist * step;
+        }
+        K.position.y = groundY(K.position.z);
+        const before = Math.floor(kz.phase / Math.PI + .5);
+        kz.phase += step / STRIDE * Math.PI;
+        const after = Math.floor(kz.phase / Math.PI + .5);
+        if (after !== before) stomp(after % 2);
+        if (onFrame) onFrame();
+        if (dist - step <= .01) {
+          // settle the legs back under the body
+          const p0 = kz.phase, target = Math.round(p0 / Math.PI) * Math.PI;
+          Kit.tween(.3, t => { kz.phase = p0 + (target - p0) * t; }, 'outQuad');
+          kz.walking = false; resolve(); return false;
+        }
+        return true;
+      });
+    });
+  }
+  function stomp(i) {
+    const f = footWorld(i);
+    SFX.thud(.7); SFX.rumble(.6, .28);
+    st.shake(.22, .86);
+    if (f.y < 1) Kit.puffs(st, { origin: V3(f.x, .6, f.z), count: 8, color: 0x8f8580, additive: false, speed: 4, spread: 1.2, sizeMin: 1.5, sizeMax: 3, life: 1.2, gravity: .3, opacity: .55, growMin: 1.5, growMax: 3 });
+    else Kit.puffs(st, { origin: V3(f.x, WATER_Y + .5, f.z), count: 10, color: 0xdfefff, additive: false, speed: 5, spread: 1, sizeMin: 1.2, sizeMax: 2.6, life: 1, gravity: -4, opacity: .7 });
+  }
+  function turnTo(yaw, dur) {
+    const y0 = K.rotation.y;
+    return Kit.tween(dur, t => { K.rotation.y = yawLerp(y0, yaw, t); kz.phase += .02; }, 'inOutQuad');
+  }
+
+  /* ---------- destruction ---------- */
+  function dust(p, n = 16, size = 1) {
+    Kit.puffs(st, { origin: p, count: n, color: 0x9a8f88, additive: false, speed: 6, spread: 1.2, sizeMin: 2.5 * size, sizeMax: 5 * size, life: 2.2, gravity: .5, opacity: .6, growMin: 2, growMax: 5, jitter: 2 });
+  }
+  function collapse(b, lean) {
+    if (!b.alive) return;
+    b.alive = false;
+    b.label.retire(.4);
+    SFX.crash(.45); SFX.rumble(1.4, .3);
+    dust(V3(b.x, 1.5, b.z));
+    Kit.burst(st, { origin: V3(b.x, b.h * .6, b.z), count: 26, size: .5, color: 0x8a8490, speed: 9, gravity: -22, life: 1.8, floor: .2 });
+    const x0 = b.g.position.x;
+    Kit.tween(1.3, t => {
+      b.g.position.y = -b.h * 1.05 * t;
+      b.g.position.x = x0 + Math.sin(t * 60) * .18 * (1 - t);
+      b.g.rotation.z = t * .18 * (lean || 1);
+    }, 'inQuad').then(() => { b.g.visible = false; });
+    addRubble(b.x, b.z, b.w, b.d);
+  }
+  function fling(b, from) {
+    b.alive = false;
+    b.label.retire(.3);
+    SFX.crash(.6); SFX.whoosh(.6, .3);
+    const out = V3(b.x - from.x, 0, b.z - from.z).normalize();
+    const v = out.multiplyScalar(Kit.rnd(20, 28)); v.y = Kit.rnd(14, 20);
+    const w = V3(Kit.rnd(-3, 3), Kit.rnd(-2, 2), Kit.rnd(-3, 3));
+    Kit.burst(st, { origin: V3(b.x, 3, b.z), count: 18, size: .45, color: 0x8a8490, speed: 8, gravity: -22, life: 1.6, floor: .2 });
+    let landed = false, age = 0;
+    st.add(dt => {
+      age += dt;
+      v.y -= 30 * dt;
+      b.g.position.addScaledVector(v, dt);
+      b.g.rotation.x += w.x * dt; b.g.rotation.y += w.y * dt; b.g.rotation.z += w.z * dt;
+      if (!landed && age > .3 && b.g.position.y < 0) {
+        landed = true;
+        const p = b.g.position;
+        SFX.crash(.4); SFX.thud(.5);
+        dust(V3(p.x, 1, p.z), 12);
+        Kit.burst(st, { origin: V3(p.x, 1, p.z), count: 22, size: .5, color: 0x8a8490, speed: 8, gravity: -22, life: 1.6, floor: .2 });
+        addRubble(p.x, p.z, b.w, b.d);
+        b.g.visible = false;
+        return false;
+      }
+      return age < 4;
+    });
+  }
+  function blast(b) {
+    SFX.explosion(.55);
+    st.shake(.2, .9);
+    const p = V3(b.x, b.h * .6, b.z);
+    Kit.puffs(st, { origin: p, count: 14, color: 0xff9a3c, speed: 7, spread: 1.1, sizeMin: 4, sizeMax: 8, life: 1.1, gravity: 2, opacity: .95, growMin: 4, growMax: 8, jitter: 1.5 });
+    Kit.puffs(st, { origin: p, count: 8, color: 0x8fe6ff, speed: 5, sizeMin: 3, sizeMax: 6, life: .6, gravity: 0 });
+    b.mat.color.set(0x2a2426); b.mat.emissiveIntensity = 0;
+    collapse(b, Kit.rnd(-1, 1));
+  }
+
+  /* ---------- the beam ---------- */
+  const beamCore = new THREE.Mesh(new THREE.CylinderGeometry(.7, .9, 1, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xe6fbff, transparent: true, opacity: .95, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const beamGlow = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.6, 1, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x3fb8ff, transparent: true, opacity: .45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  beamCore.visible = beamGlow.visible = false;
+  S.add(beamCore); S.add(beamGlow);
+  const aim = V3(0, 0, 0);
+  const _up = V3(0, 1, 0);
+  function drawBeam() {
+    const m = mouthWorld(), dir = aim.clone().sub(m), len = dir.length();
+    dir.normalize();
+    [beamCore, beamGlow].forEach(b => {
+      b.position.copy(m).addScaledVector(dir, len / 2);
+      b.quaternion.setFromUnitVectors(_up, dir);
+      b.scale.set(1, len, 1);
+    });
+    beamGlow.material.opacity = .35 + Math.random() * .2;
+    beamLight.position.copy(aim).y += 3;
+  }
+
+  /* ---------- reset ---------- */
+  function resetKaiju() {
+    Object.assign(kz, { phase: 0, walking: false, sway: 1, spinLag: 0, jaw: 0, glow: .25, lean: .12, headTilt: 0 });
+    arms.forEach(({ a, fore, sx }) => { a.rotation.set(-.9, 0, sx * .25); fore.rotation.x = -.6; });
+    beamCore.visible = beamGlow.visible = false; beamLight.intensity = 0;
+  }
+  function resetScene() {
+    Kit.clearTweens();
+    // anything still parented to the kaiju goes with the old city
+    buildings.forEach(b => { if (b.g.parent !== S) { b.g.parent.remove(b.g); S.add(b.g); } });
+    buildCity();
+    resetKaiju();
+    idling = true;
+  }
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    // rebuild only if the roster changed since the idle city went up
+    if (buildings.map(b => b.name).join('|') !== Roster.all().join('|') || buildings.some(b => !b.alive)) buildCity();
+    resetKaiju();
+    const win = buildings.find(b => b.name === winner) || buildings[0];
+    const C = V3(0, 0, -26);
+    const losers = buildings.filter(b => b !== win);
+    const swat = losers.filter(b => Math.abs(b.x) < 15 && b.z < C.z + 3);
+    const left = losers.filter(b => !swat.includes(b));
+    const swipe = left.filter(b => Math.hypot(b.x - C.x, b.z - C.z) < 21);
+    const breath = left.filter(b => !swipe.includes(b));
+
+    // the fin sinks, and it comes up just off the quay
+    const RISE_Z = -66;
+    idling = false;
+    const cam = Kit.chase(st, { rate: 2.2 });
+    cam.to([4, 3.6, -30], [0, 13, RISE_Z - 4]);
+    const siren = SFX.siren(9);
+    api.caption('Harbour authority reports a large wake.');
+    const y0 = K.position.y;
+    await Kit.tween(.6, t => { K.position.y = y0 - t * 4; }, 'inQuad');
+    K.position.set(0, -29, RISE_Z); K.rotation.y = 0;
+    api.caption(null);
+    SFX.rumble(3, .55);
+    st.shake(.3, .97);
+    await Kit.tween(2.1, t => {
+      K.position.y = -29 + t * 24;
+      kz.headTilt = -.25 * t;
+      if (Math.random() < .5) {
+        const a = Math.random() * 6.28;
+        Kit.puffs(st, { origin: V3(Math.cos(a) * 6, WATER_Y + Kit.rnd(0, 18) * t, RISE_Z + Math.sin(a) * 5), count: 3, color: 0xe8f4ff, additive: false, speed: 2, sizeMin: 1.4, sizeMax: 3, life: 1.2, gravity: -9, opacity: .75 });
+      }
+    }, 'outCubic');
+    // and says hello
+    cam.to([4, 3.2, -32], [0, 19, RISE_Z], 1.5);
+    SFX.roar(1.8);
+    st.shake(.35, .95);
+    await Kit.tween(.4, t => { setJaw(t * .6); kz.glow = .25 + t * 1.2; }, 'outQuad');
+    await Kit.wait(450);
+    await Kit.tween(.4, t => { setJaw(.6 * (1 - t)); kz.glow = 1.45 - t * 1.2; kz.headTilt = -.25 * (1 - t); }, 'inOutQuad');
+
+    // the walk in, swatting the blocks on either side of the avenue
+    api.caption('Please remain calm and at your desks.');
+    const pending = swat.slice();
+    await walkTo(C.x, C.z, 15, () => {
+      const k = (K.position.z - RISE_Z) / (C.z - RISE_Z);
+      cam.to([4.2, 4 + k * 3, K.position.z + 38 - k * 10], [K.position.x, 15 - k * 2, K.position.z], 3);
+      for (let i = pending.length - 1; i >= 0; i--) {
+        const b = pending[i];
+        if (K.position.z >= b.z - 6) {
+          pending.splice(i, 1);
+          const arm = arms[b.x < 0 ? 0 : 1];
+          Kit.tween(.55, t => { arm.a.rotation.z = arm.sx * (.25 + Math.sin(t * Math.PI) * 1.2); }, 'outQuad');
+          setTimeout(() => collapse(b, b.x < 0 ? 1 : -1), 180);
+        }
+      }
+    });
+    pending.forEach(b => collapse(b));
+    api.caption(null);
+
+    // tail swipe: a full turn; anything in reach goes for a ride
+    cam.to([34, 44, 20], [0, 5, -26], 2.6);
+    await Kit.wait(300);
+    SFX.whoosh(1.2, .45);
+    const yaw0 = K.rotation.y, tailStart = yaw0 + Math.PI;
+    const todo = swipe.map(b => {
+      let d = Math.atan2(b.x - K.position.x, b.z - K.position.z) - tailStart;
+      d = ((d % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      return { b, d };
+    });
+    let lastE = 0;
+    await Kit.tween(1.6, (e, dt) => {
+      K.rotation.y = yaw0 + e * 2 * Math.PI;
+      const vel = (e - lastE) / Math.max(dt, 1e-3); lastE = e;
+      kz.spinLag = -Math.min(.4, vel * .09);
+      kz.phase += .06;
+      todo.forEach(o => { if (!o.done && e * 2 * Math.PI >= o.d) { o.done = true; fling(o.b, K.position); } });
+    }, 'inOutQuad');
+    kz.spinLag = 0;
+    if (!breath.length) { SFX.roar(1.4, .6); await Kit.wait(900); }
+
+    // atomic breath for the rest, swept in angle order
+    if (breath.length) {
+      api.caption('Now it is just showing off.');
+      const face = K.rotation.y;
+      breath.forEach(b => { let d = Math.atan2(b.x - K.position.x, b.z - K.position.z) - face; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; b.rel = d; });
+      breath.sort((a, b) => a.rel - b.rel);
+      const first = breath[0];
+      const kp = K.position.clone();
+      // side-on to the beam, far enough back to hold the mouth and the target
+      const beamShot = b => {
+        const mid = V3((kp.x + b.x) / 2, 0, (kp.z + b.z) / 2);
+        const along = V3(b.x - kp.x, 0, b.z - kp.z).normalize();
+        let side = V3(along.z, 0, -along.x);
+        if (side.z < 0) side.negate();                    // stay on the city side, away from the harbour
+        const span = Math.hypot(b.x - kp.x, b.z - kp.z);
+        return [mid.clone().addScaledVector(side, 24 + span * .45).add(V3(0, 17, 0)).toArray(), mid.add(V3(0, 8, 0)).toArray()];
+      };
+      const shot0 = beamShot(first);
+      cam.to(shot0[0], shot0[1], 2.2);
+      // charge: spines light from the tail up
+      SFX.tone({ freq: 90, to: 700, dur: 1.1, type: 'sawtooth', gain: .08, filter: 'lowpass', filterFreq: 1400 });
+      await Promise.all([
+        turnTo(faceTo(first.x, first.z), .7),
+        Kit.tween(.8, t => { kz.glow = .25 + t * 3.2; setJaw(t * .55); kz.headTilt = t * .12; }, 'inQuad')
+      ]);
+      aim.set(first.x, first.h * .5, first.z);
+      beamCore.visible = beamGlow.visible = true;
+      beamLight.intensity = 90;
+      const per = Math.min(.42, Math.max(.2, 2.6 / breath.length));
+      const beamSfxDur = .5 + breath.length * per;
+      SFX.beam(beamSfxDur);
+      const beamLoop = () => { if (!beamCore.visible) return false; drawBeam(); if (Math.random() < .5) Kit.puffs(st, { origin: aim.clone(), count: 2, color: 0x9ff0ff, speed: 4, sizeMin: 1, sizeMax: 2.5, life: .4, gravity: 0 }); return true; };
+      st.add(beamLoop);
+      await Kit.wait(250);
+      blast(first);
+      for (let i = 1; i < breath.length; i++) {
+        const b = breath[i], from = aim.clone(), to = V3(b.x, b.h * .5, b.z), y0 = K.rotation.y, y1 = faceTo(b.x, b.z);
+        const shot = beamShot(b); cam.to(shot[0], shot[1], 1.4);
+        await Kit.tween(per, t => { aim.lerpVectors(from, to, t); K.rotation.y = yawLerp(y0, y1, t); }, 'inOutQuad');
+        blast(b);
+      }
+      await Kit.wait(250);
+      beamCore.visible = beamGlow.visible = false; beamLight.intensity = 0;
+      await Kit.tween(.45, t => { kz.glow = 3.45 - t * 3.2; setJaw(.55 * (1 - t)); kz.headTilt = .12 * (1 - t); }, 'inOutQuad');
+      api.caption(null);
+    }
+
+    // one left. it goes over for a look
+    const wp = V3(win.x, 0, win.z);
+    const toWin = V3(wp.x - K.position.x, 0, wp.z - K.position.z);
+    const dist = toWin.length(); toWin.normalize();
+    const stand = wp.clone().addScaledVector(toWin, -10.5);
+    const sideW = V3(toWin.z, 0, -toWin.x);
+    if (sideW.z < 0) sideW.negate();                    // prefer the low-rise side
+    const rotY = (v, a) => v.clone().applyAxisAngle(_up, a);
+    const SIDES = [sideW, rotY(sideW, .6), rotY(sideW, -.6), sideW.clone().negate(), rotY(sideW, Math.PI - .6), rotY(sideW, Math.PI + .6)];
+    const shotFrom = (look, dist, up, fwd) => clearShot(look, SIDES.map(sd => look.clone().addScaledVector(sd, dist).addScaledVector(toWin, fwd).add(V3(0, up, 0)))
+      .concat([look.clone().addScaledVector(toWin, -dist * .5).add(V3(0, 36, 0))]));
+    await turnTo(faceTo(wp.x, wp.z), .7);
+    if (dist > 11) {
+      const walkLook = stand.clone().addScaledVector(toWin, 6).add(V3(0, 12, 0));
+      const walkOff = shotFrom(walkLook, 30, -2, 4).sub(walkLook);
+      await walkTo(stand.x, stand.z, 14, () => {
+        const lk = K.position.clone().addScaledVector(toWin, 6).add(V3(0, 12, 0));
+        cam.to(lk.clone().add(walkOff).toArray(), lk.toArray(), 2.4);
+      });
+    }
+    K.rotation.y = faceTo(wp.x, wp.z);
+    win.label.highlight(0xffd23f, 1.3);
+    win.label.material.depthTest = false; win.label.renderOrder = 30;
+
+    // lean down, reach, and pull it out of the ground
+    const midW = K.position.clone().lerp(wp, .55).add(V3(0, 11, 0));
+    cam.to(shotFrom(midW, 30, 0, 0).toArray(), midW.toArray(), 2.4);
+    await Kit.tween(.7, t => {
+      kz.lean = .12 + t * .5; kz.headTilt = t * .3;
+      arms.forEach(({ a, sx }) => { a.rotation.x = -.9 + t * .5; a.rotation.z = sx * (.25 - t * .15); });
+    }, 'inOutQuad');
+    SFX.rumble(1.6, .45); SFX.creak(1.2);
+    dust(V3(wp.x, 1, wp.z), 18, 1.2);
+    Kit.burst(st, { origin: V3(wp.x, .5, wp.z), count: 30, size: .45, color: 0x6a5a48, speed: 7, gravity: -20, life: 1.8, floor: .2 });
+    addRubble(wp.x, wp.z, win.w * 1.4, win.d * 1.4);
+    const from = win.g.position.clone(), q0 = win.g.quaternion.clone();
+    const HOLD = V3(0, 18.8, 9.2);
+    // the hold point with the body upright again, in world space
+    const holdW = HOLD.clone().applyAxisAngle(_up, K.rotation.y).add(K.position);
+    holdW.y -= win.h / 2;
+    const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(-.12, 0, .08));
+    await Kit.tween(1.3, t => {
+      kz.lean = .62 - t * .6; kz.headTilt = .3 - t * .15;
+      arms.forEach(({ a, sx }) => { a.rotation.x = -.4 - t * 1.1; a.rotation.z = sx * (.1 + t * .05); });
+      win.g.position.lerpVectors(from, holdW, t);
+      win.g.quaternion.slerpQuaternions(q0, q1, t);
+      if (Math.random() < .3) Kit.puffs(st, { origin: win.g.position.clone().add(V3(Kit.rnd(-2, 2), 0, Kit.rnd(-2, 2))), count: 1, color: 0x8a7f78, additive: false, speed: 1, sizeMin: 1, sizeMax: 2, life: 1, gravity: -6, opacity: .6 });
+    }, 'inOutCubic');
+    K.attach(win.g);
+
+    // and roars at it
+    const head = headG.getWorldPosition(V3(0, 0, 0));
+    const bc = win.g.getWorldPosition(V3(0, 0, 0)).add(V3(0, win.h / 2, 0));
+    const mid = bc.clone().lerp(head, .5);
+    // three-quarter profile: the building in front, the face behind it, both in frame
+    cam.to(shotFrom(mid, 21, 1, 13).toArray(), mid.clone().add(V3(0, 1.5, 0)).toArray(), 2.2);
+    await Kit.wait(350);
+    SFX.roar(2.2);
+    st.shake(.3, .95);
+    await Kit.tween(1.8, t => {
+      setJaw(Math.min(1, t * 4) * .65);
+      kz.glow = .25 + Math.sin(Math.min(1, t * 1.4) * Math.PI) * 2.6;
+      win.mat.emissiveIntensity = Math.random() < .5 ? .2 : 1.4;
+      if (Math.random() < .35) Kit.puffs(st, { origin: mouthWorld(), dir: V3(Math.sin(K.rotation.y), -.2, Math.cos(K.rotation.y)), count: 2, color: 0xe8f0ff, additive: false, speed: 7, spread: .3, sizeMin: 1, sizeMax: 2, life: .9, gravity: 0, opacity: .4 });
+    }, 'linear');
+    win.mat.emissiveIntensity = 1.6;
+    await Kit.tween(.4, t => { setJaw(.65 * (1 - t)); kz.headTilt = .15 - t * .1; }, 'inOutQuad');
+    siren.stop(.8);
+    await Kit.wait(300);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'kaiju-rampage',
+    kicker: 'The last building standing',
+    stinger: () => { SFX.roar(1.6, .6); SFX.cheer(1.6); },
+    tagline: 'Every building has a name on it. Something is coming out of the harbour.',
+    goLabel: 'Wake it up',
+    againLabel: 'Rebuild',
+    verdict: n => `The city is gone. ${n}'s building was spared, and is now being held very close to a face. ${n} goes first.`,
+    prewarm: [new THREE.MeshStandardMaterial({ color: 0x888888 }), beamCore.material, beamGlow.material],
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

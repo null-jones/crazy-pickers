@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cow Trebuchet — Crazy Pickers</title>
+<meta name="description" content="Named cows versus a castle gate. The cows are mostly losing. One of fifteen unhinged 3D standup name pickers.">
+<link rel="canonical" href="https://elliej.dev/crazy-pickers/pickers/trebuchet.html">
+<meta name="theme-color" content="#05060c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Crazy Pickers">
+<meta property="og:title" content="Cow Trebuchet — Crazy Pickers">
+<meta property="og:description" content="Named cows versus a castle gate. The cows are mostly losing. One of fifteen unhinged 3D standup name pickers.">
+<meta property="og:url" content="https://elliej.dev/crazy-pickers/pickers/trebuchet.html">
+<meta property="og:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crazy Pickers: a chaotic sticker collage of a crashing car, a cat coughing up a hairball, a toilet, a batter and a zombie, with the words WHO GOES FIRST?!">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cow Trebuchet — Crazy Pickers">
+<meta name="twitter:description" content="Named cows versus a castle gate. The cows are mostly losing. One of fifteen unhinged 3D standup name pickers.">
+<meta name="twitter:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Cow Trebuchet</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.1, far: 700 });
+  const S = st.scene;
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  const sky = Kit.gradientSky([[0, '#3f7fd0'], [.35, '#7fb4ec'], [.49, '#d9ecff'], [.52, '#9fb79a'], [1, '#4d6a45']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0xcfe2f4, 140, 520);
+
+  S.add(new THREE.HemisphereLight(0xdfeeff, 0x4a6a3a, 1.0));
+  S.add(new THREE.AmbientLight(0xffffff, .25));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.5);
+  sun.position.set(50, 70, 35); sun.target.position.set(0, 0, -25); S.add(sun.target);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 10, far: 260 });
+  sun.shadow.bias = -0.0006;
+  S.add(sun);
+
+  /* ---------- land, moat, castle ---------- */
+  // the trebuchet is at the origin and fires down -Z at the gate
+  const WALL_Z = -56, WALL_T = 4, WALL_H = 12, MOAT_Z0 = -54.5, MOAT_Z1 = -45, WATER_Y = -.8, GATE_W = 6, GATE_H = 7;
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x5f9a45, roughness: 1 });
+  function plane(w, d, x, y, z, mat) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true; S.add(m); return m;
+  }
+  plane(400, 260, 0, 0, MOAT_Z1 + 130, grassMat);
+  plane(400, 200, 0, 0, MOAT_Z0 - 100, grassMat);
+  const moat = plane(400, MOAT_Z1 - MOAT_Z0, 0, WATER_Y, (MOAT_Z0 + MOAT_Z1) / 2,
+    new THREE.MeshStandardMaterial({ color: 0x3f6f6a, roughness: .15, metalness: .3 }));
+  [MOAT_Z0, MOAT_Z1].forEach(z => { const bank = Kit.box(400, 1.2, .4, 0x5b4630, { roughness: 1 }); bank.position.set(0, -.5, z); S.add(bank); });
+  // a dirt track from the trebuchet to the drawbridge
+  plane(7, 40, 0, .02, -24, new THREE.MeshStandardMaterial({ color: 0x9a7b52, roughness: 1 }));
+
+  // stone texture, UVs scaled so a block is the same size on every wall
+  function stoneTex() {
+    const [c, x] = Kit.makeCanvas(256, 256);
+    x.fillStyle = '#8f877a'; x.fillRect(0, 0, 256, 256);
+    for (let r = 0; r < 8; r++) for (let k = -1; k < 5; k++) {
+      const off = r % 2 ? 32 : 0;
+      const v = 150 + Math.random() * 45 | 0;
+      x.fillStyle = `rgb(${v},${v - 6},${v - 18})`;
+      x.fillRect(k * 64 + off + 3, r * 32 + 3, 58, 26);
+    }
+    const t = Kit.texFromCanvas(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+  }
+  const stoneMat = new THREE.MeshStandardMaterial({ map: stoneTex(), roughness: .95 });
+  function stoneBox(w, h, d) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    const uv = g.attributes.uv, n = g.attributes.normal;
+    for (let i = 0; i < uv.count; i++) {
+      const nx = Math.abs(n.getX(i)), ny = Math.abs(n.getY(i));
+      const U = nx > .5 ? d : w, Vv = ny > .5 ? d : h;
+      uv.setXY(i, uv.getX(i) * U / 6, uv.getY(i) * Vv / 6);
+    }
+    const m = new THREE.Mesh(g, stoneMat); m.castShadow = m.receiveShadow = true; return m;
+  }
+  const HALF = 22;
+  [-1, 1].forEach(sx => {
+    const len = HALF - GATE_W / 2;
+    const w = stoneBox(len, WALL_H, WALL_T); w.position.set(sx * (GATE_W / 2 + len / 2), WALL_H / 2, WALL_Z - WALL_T / 2); S.add(w);
+  });
+  const lintel = stoneBox(GATE_W, WALL_H - GATE_H, WALL_T); lintel.position.set(0, GATE_H + (WALL_H - GATE_H) / 2, WALL_Z - WALL_T / 2); S.add(lintel);
+  // battlements, one instanced draw
+  const merlon = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1.3, 1), stoneMat, 36);
+  const _d = new THREE.Object3D();
+  let mi = 0;
+  for (let x = -HALF + 1; x <= HALF - 1 && mi < 36; x += 2.5) { _d.position.set(x, WALL_H + .65, WALL_Z - .5); _d.updateMatrix(); merlon.setMatrixAt(mi++, _d.matrix); }
+  merlon.count = mi; merlon.castShadow = true; S.add(merlon);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xb8413a, roughness: .8 });
+  const flagMats = [];
+  function tower(x, z, r, h) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.06, h, 20), stoneMat); t.position.set(x, h / 2, z); t.castShadow = t.receiveShadow = true; S.add(t);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.2, r * 1.4, 20), roofMat); roof.position.set(x, h + r * .7, z); roof.castShadow = true; S.add(roof);
+    const pole = Kit.cyl(.08, .08, 3, 0x3a3030, 6); pole.position.set(x, h + r * 1.4 + 1.2, z); S.add(pole);
+    const fm = new THREE.MeshStandardMaterial({ color: 0xffd23f, roughness: .7, side: THREE.DoubleSide });
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.1, 6, 1), fm); flag.position.set(x + 1, h + r * 1.4 + 2.2, z); S.add(flag);
+    flagMats.push(flag);
+  }
+  tower(-HALF, WALL_Z - 2, 4.5, 18); tower(HALF, WALL_Z - 2, 4.5, 18);
+  const keep = stoneBox(26, 22, 16); keep.position.set(0, 11, -80); S.add(keep);
+  tower(-13, -72, 3.4, 27); tower(13, -72, 3.4, 27);
+  for (let i = 0; i < 5; i++) { const win = Kit.box(1.2, 2.2, .3, 0x1a1512, { roughness: 1 }); win.position.set(-8 + i * 4, 15, -71.9); S.add(win); }
+  // gate: planks that come apart, and a dark passage behind them
+  const passage = Kit.box(GATE_W, GATE_H, .3, 0x16120f, { roughness: 1 }); passage.position.set(0, GATE_H / 2, WALL_Z - WALL_T + .2); S.add(passage);
+  const plankMat = new THREE.MeshStandardMaterial({ color: 0x7a4f2a, roughness: .9 });
+  const planks = [];
+  for (let i = 0; i < 6; i++) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(.96, GATE_H - .1, .45), plankMat);
+    p.castShadow = true;
+    p.userData.home = V3(-GATE_W / 2 + .5 + i, GATE_H / 2, WALL_Z - .6);
+    p.position.copy(p.userData.home); S.add(p); planks.push(p);
+  }
+  const bands = [1.6, 5.2].map(y => { const b = Kit.box(GATE_W, .3, .1, 0x2b2522, { metalness: .6, roughness: .5 }); b.position.set(0, y, WALL_Z - .3); S.add(b); return b; });
+  // drawbridge, lowered
+  const bridge = Kit.box(GATE_W, .35, MOAT_Z1 - MOAT_Z0 + 2.5, 0x8a6035, { roughness: .9 }); bridge.position.set(0, .05, (MOAT_Z0 + MOAT_Z1) / 2 - .6); S.add(bridge);
+  // scenery: trees and far hills
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7a35, roughness: 1, flatShading: true });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3e28, roughness: 1 });
+  const LEAF = new THREE.IcosahedronGeometry(1, 0), TRUNK = new THREE.CylinderGeometry(.3, .4, 3, 6);
+  function tree(x, z, s) {
+    const t = new THREE.Mesh(TRUNK, trunkMat); t.position.set(x, 1.5 * s, z); t.scale.setScalar(s); t.castShadow = true; S.add(t);
+    const l = new THREE.Mesh(LEAF, leafMat); l.position.set(x, 4.2 * s, z); l.scale.set(2.2 * s, 2.6 * s, 2.2 * s); l.castShadow = true; S.add(l);
+  }
+  for (let i = 0; i < 26; i++) {
+    const side = i % 2 ? 1 : -1;
+    tree(side * Kit.rnd(30, 70), Kit.rnd(-40, 40), Kit.rnd(.8, 1.4));
+  }
+  const hillMat = new THREE.MeshStandardMaterial({ color: 0x6f9c5a, roughness: 1, flatShading: true });
+  for (let i = 0; i < 8; i++) {
+    const h = new THREE.Mesh(LEAF, hillMat); h.scale.set(Kit.rnd(40, 70), Kit.rnd(10, 20), 30);
+    h.position.set(-180 + i * 52, -4, Kit.rnd(-230, -180)); S.add(h);
+  }
+
+  /* ---------- the trebuchet ---------- */
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8e5d34, roughness: .9 });
+  const woodDark = new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: .9 });
+  const iron = new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: .5, metalness: .7 });
+  const T = new THREE.Group(); S.add(T);
+  const _Z = V3(0, 0, 1);
+  function beamBetween(a, b, w, mat, parent) {
+    const A = V3(...a), B = V3(...b), len = A.distanceTo(B);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, w, len), mat || wood);
+    // orient in the parent's own space (lookAt would read B as a world point)
+    m.position.copy(A).lerp(B, .5); m.quaternion.setFromUnitVectors(_Z, B.clone().sub(A).normalize());
+    m.castShadow = m.receiveShadow = true;
+    (parent || T).add(m); return m;
+  }
+  const AX_Y = 7;
+  [-1, 1].forEach(sx => {
+    beamBetween([sx * 1.9, .35, -5], [sx * 1.9, .35, 6.5], .7);
+    beamBetween([sx * 1.9, .35, -3.6], [sx * 1.9, AX_Y, 0], .55);
+    beamBetween([sx * 1.9, .35, 3.6], [sx * 1.9, AX_Y, 0], .55);
+    beamBetween([sx * 1.9, .35, 0], [sx * 1.9, AX_Y - .3, 0], .45, woodDark);
+  });
+  [-5, 0, 6.5].forEach(z => beamBetween([-1.9, .35, z], [1.9, .35, z], .6, woodDark));
+  const axle = Kit.cyl(.28, .28, 4.6, 0x3a3a40, 12, { metalness: .7, roughness: .5 }); axle.rotation.z = Math.PI / 2; axle.position.y = AX_Y; T.add(axle);
+  const arm = new THREE.Group(); arm.position.y = AX_Y; T.add(arm);
+  const LONG = 8.2, SHORT = 2.8, ROPE = 3.2;
+  beamBetween([0, 0, -SHORT - .3], [0, 0, LONG], .5, wood, arm);
+  const cw = new THREE.Group(); cw.position.z = -SHORT; arm.add(cw);
+  const cwBox = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 2.6), woodDark); cwBox.position.y = -1.9; cwBox.castShadow = true; cw.add(cwBox);
+  [-1, 1].forEach(sx => { const bar = Kit.cyl(.08, .08, 1, 0x3a3a40, 6, { metalness: .7 }); bar.position.set(sx * .9, -.5, 0); cw.add(bar); });
+  const bandCw = new THREE.Mesh(new THREE.BoxGeometry(2.7, .25, 2.7), iron); bandCw.position.y = -1.1; cw.add(bandCw);
+  // sling: a rope and a basket, placed each frame from the arm angle
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 1, 6), new THREE.MeshStandardMaterial({ color: 0xcbb68a, roughness: 1 }));
+  S.add(rope);
+  const basket = new THREE.Group(); S.add(basket);
+  const basketMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.3, .9, .45, 14), new THREE.MeshStandardMaterial({ color: 0x7a6040, roughness: 1 }));
+  basketMesh.castShadow = true; basket.add(basketMesh);
+  const PHI0 = -.52, PHI_REL = 1.75, PHI_MAX = 2.55;
+  const treb = { phi: PHI0, beta: -.85 };
+  const _tip = V3(0, 0, 0), _up = V3(0, 1, 0);
+  function tipWorld(out) { return out.set(0, AX_Y + LONG * Math.sin(treb.phi), LONG * Math.cos(treb.phi)); }
+  st.add(() => {
+    arm.rotation.x = -treb.phi;
+    cw.rotation.x = treb.phi;                                  // counterweight always hangs
+    tipWorld(_tip);
+    basket.position.set(0, _tip.y + ROPE * Math.sin(treb.beta), _tip.z + ROPE * Math.cos(treb.beta));
+    const dir = basket.position.clone().sub(_tip);
+    rope.position.copy(_tip).addScaledVector(dir, .5);
+    rope.quaternion.setFromUnitVectors(_up, dir.normalize());
+    rope.scale.y = ROPE;
+    return true;
+  });
+
+  /* ---------- people ---------- */
+  const crew = [
+    People.make({ x: 3.2, y: 0, z: 3.8, facing: Math.PI + .6, shirt: 0x7a5a9a }),
+    People.make({ x: -3.4, y: 0, z: -1.5, facing: Math.PI - .4, shirt: 0x4a7a5a })
+  ];
+  const guards = [-12, 7, 15].map(x => People.make({ x, y: WALL_H, z: WALL_Z - 1.4, facing: 0, shirt: 0x9a3a3a, legs: 0x3a3a50 }));
+  [...crew, ...guards].forEach(p => {
+    S.add(p.g);
+    if (guards.includes(p)) { const helm = Kit.ball(.2, 0x9aa0aa, 10, { metalness: .8, roughness: .3 }); helm.scale.y = .8; helm.position.y = 1.58; p.hips.add(helm); }
+  });
+
+  /* ---------- the herd ---------- */
+  const cm = {
+    hide: new THREE.MeshStandardMaterial({ color: 0xf2f1ec, roughness: .95 }),
+    spot: new THREE.MeshStandardMaterial({ color: 0x24242c, roughness: 1 }),
+    pink: new THREE.MeshStandardMaterial({ color: 0xf0b7bd, roughness: .8 }),
+    horn: new THREE.MeshStandardMaterial({ color: 0xd8cfae, roughness: .7 }),
+    eye: new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: .2 })
+  };
+  const CG = {
+    body: new THREE.BoxGeometry(2, 1.1, 1), head: new THREE.BoxGeometry(.7, .62, .62), snout: new THREE.BoxGeometry(.36, .34, .44),
+    leg: new THREE.CylinderGeometry(.14, .13, .9, 8), horn: new THREE.CylinderGeometry(.05, .07, .24, 6),
+    eye: new THREE.SphereGeometry(.075, 8, 6), spot: new THREE.SphereGeometry(1, 8, 6), tail: new THREE.CylinderGeometry(.05, .03, .9, 6)
+  };
+  function part(g, geo, mat, x, y, z) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; }
+  function makeCow(name) {
+    const g = new THREE.Group();
+    part(g, CG.body, cm.hide, 0, 1.35, 0);
+    for (let i = 0; i < 3; i++) {
+      const s = part(g, CG.spot, cm.spot, Kit.rnd(-.7, .7), 1.35 + Kit.rnd(-.3, .3), (Math.random() < .5 ? 1 : -1) * .5);
+      s.scale.set(Kit.rnd(.18, .32), Kit.rnd(.14, .24), .06);
+    }
+    part(g, CG.head, cm.hide, 1.2, 1.62, 0);
+    part(g, CG.snout, cm.pink, 1.58, 1.46, 0);
+    [-1, 1].forEach(sz => {
+      part(g, CG.horn, cm.horn, 1.24, 2.0, sz * .2);
+      part(g, CG.eye, cm.eye, 1.49, 1.72, sz * .22);
+    });
+    [[-.7, .33], [-.7, -.33], [.7, .33], [.7, -.33]].forEach(([x, z]) => part(g, CG.leg, cm.hide, x, .45, z));
+    const tail = part(g, CG.tail, cm.hide, -1.08, 1.2, 0); tail.rotation.z = .35;
+    const label = Kit.label(st, name, { height: .6, minScreen: .028 });
+    label.position.y = 2.75;
+    g.add(label);
+    g.scale.setScalar(.95);
+    S.add(g);
+    return { g, name, label, state: 'pen' };
+  }
+  const PEN = { x0: 7.5, z0: -2, dx: 3.1, dz: 2.5, cols: 5 };
+  // the pen fence
+  const fenceMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1 });
+  {
+    const x0 = PEN.x0 - 2, x1 = PEN.x0 + PEN.dx * (PEN.cols - 1) + 2, z0 = PEN.z0 - 1.8, z1 = PEN.z0 + PEN.dz * 3 + 1.8;
+    const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+    corners.forEach((c, i) => {
+      const n = corners[(i + 1) % 4];
+      if (i === 3) return;                       // leave the trebuchet side open
+      [.55, 1.05].forEach(y => beamBetween([c[0], y, c[1]], [n[0], y, n[1]], .12, fenceMat, S));
+      const segs = Math.round(Math.hypot(n[0] - c[0], n[1] - c[1]) / 2.4);
+      for (let k = 0; k <= segs; k++) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(.18, 1.3, .18), fenceMat);
+        post.position.set(c[0] + (n[0] - c[0]) * k / segs, .65, c[1] + (n[1] - c[1]) * k / segs); S.add(post);
+      }
+    });
+  }
+  let cows = [];
+  function penSpot(i) {
+    return V3(PEN.x0 + (i % PEN.cols) * PEN.dx + Kit.rnd(-.3, .3), 0, PEN.z0 + Math.floor(i / PEN.cols) * PEN.dz + Kit.rnd(-.2, .2));
+  }
+  function buildHerd() {
+    cows.forEach(c => { c.label.dispose(); if (c.g.parent) c.g.parent.remove(c.g); });
+    cows = Roster.all().map((n, i) => {
+      const c = makeCow(n);
+      c.g.position.copy(penSpot(i));
+      c.g.rotation.y = Math.PI + Kit.rnd(-.35, .35);
+      c.label.position.y = 2.75 + (i % 2) * .55;          // staggered so neighbours never overlap
+      c.phase = Math.random() * 6;
+      return c;
+    });
+  }
+  buildHerd();
+
+  // dizzy stars for the one that makes it
+  const starTex = (() => {
+    const [c, x] = Kit.makeCanvas(64, 64);
+    x.fillStyle = '#ffe14a'; x.beginPath();
+    for (let i = 0; i < 10; i++) { const r = i % 2 ? 12 : 30, a = i * Math.PI / 5 - Math.PI / 2; x.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); }
+    x.fill(); return Kit.texFromCanvas(c);
+  })();
+  const stars = [0, 1, 2].map(() => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, depthWrite: false })); s.scale.setScalar(.5); s.visible = false; S.add(s); return s; });
+
+  /* ---------- ambience ---------- */
+  let tt = 0, idling = true, dizzy = null;
+  st.add(dt => {
+    tt += dt;
+    [...crew, ...guards].forEach(p => People.animate(p, tt, dt));
+    flagMats.forEach((f, i) => { f.rotation.y = Math.sin(tt * 2 + i) * .25; });
+    cows.forEach(c => {
+      if (c.state === 'pen') c.g.position.y = Math.max(0, Math.sin(tt * 3 + c.phase) * .04);
+      if (c.state === 'float') { c.g.position.y = WATER_Y - 1.45 + Math.sin(tt * 2 + c.phase) * .12; c.g.rotation.z = c.tilt + Math.sin(tt * 1.4 + c.phase) * .1; }
+    });
+    if (dizzy) {
+      const h = dizzy.g.localToWorld(V3(1.2, 2.3, 0));
+      stars.forEach((s, i) => { const a = tt * 5 + i * 2.1; s.position.set(h.x + Math.cos(a) * .7, h.y + Math.sin(tt * 7 + i) * .1, h.z + Math.sin(a) * .7); });
+      dizzy.g.rotation.z = Math.sin(tt * 3.3) * .08;
+    }
+    if (idling) st.look([24 + Math.sin(tt * .1) * 6, 9, 22 + Math.cos(tt * .1) * 4], [2, 3, -18]);
+    return true;
+  });
+
+  /* ---------- firing ---------- */
+  function hop(c, to, dur, apex) {
+    const from = c.g.position.clone();
+    return Kit.tween(dur, t => { c.g.position.lerpVectors(from, to, t); c.g.position.y += 4 * apex * t * (1 - t); }, 'linear');
+  }
+  function basketSlot(i) {
+    const layer = Math.floor(i / 3), a = (i % 3) / 3 * Math.PI * 2 + layer * .9, r = i === 0 && layer === 0 ? .45 : .55;
+    return V3(Math.cos(a) * r, .2 + layer * .95, Math.sin(a) * r);
+  }
+  async function load(list) {
+    await Promise.all(list.map((c, i) => Kit.wait(i * 90).then(async () => {
+      c.state = 'loading';
+      if (i < 3) SFX.moo(Kit.rnd(.9, 1.4));
+      const slot = basketSlot(i).add(basket.position);
+      await hop(c, slot, .5, 2.6);
+      basket.attach(c.g);
+      c.g.position.copy(basketSlot(i));
+      c.g.rotation.set(0, Kit.rnd(0, 6.28), 0);
+      SFX.thud(.15);
+    })));
+  }
+  // swing the arm; `release` fires once, at the release angle
+  async function fire(release) {
+    SFX.creak(.35); SFX.thud(.3);
+    let done = false;
+    await Kit.tween(.8, u => {
+      const e = u * u;
+      treb.phi = PHI0 + (PHI_MAX - PHI0) * e;
+      treb.beta = treb.phi - .33 + (treb.phi - PHI0) * .45;
+      if (!done && treb.phi >= PHI_REL) { done = true; SFX.whoosh(.7, .4); release(); }
+    }, 'linear');
+    const p0 = treb.phi, b0 = treb.beta;
+    Kit.tween(1.3, t => {
+      const s = t * 1.3;
+      treb.phi = Math.PI / 2 + (p0 - Math.PI / 2) * Math.exp(-2.6 * s) * Math.cos(6 * s);
+      treb.beta = b0 + (1.5 * Math.PI - b0) * Kit.ease.outCubic(t);
+    }, 'linear').then(() => { treb.beta -= 2 * Math.PI; });
+    SFX.thud(.5);
+    st.shake(.12, .85);
+  }
+  function reload() {
+    const p0 = treb.phi, b0 = treb.beta;
+    SFX.creak(.9);
+    return Kit.tween(.9, t => { treb.phi = p0 + (PHI0 - p0) * t; treb.beta = b0 + (-.85 - b0) * t; }, 'inOutQuad');
+  }
+  function launch(c, to, dur, apex, spin) {
+    S.attach(c.g);
+    c.state = 'flying';
+    const from = c.g.position.clone();
+    const w = V3(Kit.rnd(4, 8), Kit.rnd(-2, 2), Kit.rnd(3, 6)).multiplyScalar(spin ?? 1);
+    return Kit.tween(dur, (t, dt) => {
+      c.g.position.lerpVectors(from, to, t);
+      c.g.position.y += 4 * apex * t * (1 - t);
+      c.g.rotation.x += w.x * dt; c.g.rotation.y += w.y * dt; c.g.rotation.z += w.z * dt;
+    }, 'linear');
+  }
+
+  /* ---------- how each volley goes wrong ---------- */
+  function splash(p) {
+    SFX.splash();
+    Kit.puffs(st, { origin: V3(p.x, WATER_Y + .3, p.z), count: 12, color: 0xe6f6ff, additive: false, speed: 5, spread: .8, dir: V3(0, 1, 0), sizeMin: .6, sizeMax: 1.4, life: .9, gravity: -12, opacity: .8 });
+  }
+  const OUTCOMES = {
+    short: {
+      caption: 'Short.',
+      target: () => V3(Kit.rnd(-7, 7), 0, Kit.rnd(-40, -30)),
+      land(c) {
+        SFX.thud(.5); SFX.moo(.8);
+        Kit.puffs(st, { origin: c.g.position.clone().add(V3(0, .4, 0)), count: 8, color: 0xb59a70, additive: false, speed: 3, sizeMin: .8, sizeMax: 1.6, life: 1, gravity: .4, opacity: .6 });
+        const p = c.g.position.clone(), r0 = c.g.rotation.clone(), yaw = Kit.rnd(0, 6.28);
+        Kit.tween(.6, t => {
+          c.g.position.set(p.x, 1.85 * Kit.ease.outQuad(t) + Math.sin(t * Math.PI) * 1.2, p.z);
+          c.g.rotation.set(r0.x + (Math.PI - r0.x) * t, r0.y + (yaw - r0.y) * t, r0.z * (1 - t));
+        }, 'outQuad');
+        c.state = 'down';
+      }
+    },
+    moat: {
+      caption: 'Into the moat.',
+      target: () => { let x; do { x = Kit.rnd(-16, 16); } while (Math.abs(x) < 4.5); return V3(x, WATER_Y - 1.3, Kit.rnd(MOAT_Z0 + 1.5, MOAT_Z1 - 1.5)); },
+      land(c) {
+        splash(c.g.position);
+        c.tilt = Kit.rnd(-.4, .4);
+        c.g.rotation.set(0, Kit.rnd(0, 6.28), c.tilt);
+        c.state = 'float';
+      }
+    },
+    wall: {
+      caption: 'Closer. Still a wall.',
+      target: () => { let x; do { x = Kit.rnd(-16, 16); } while (Math.abs(x) < 5); return V3(x, Kit.rnd(4, 8.5), WALL_Z + .9); },
+      land(c) {
+        SFX.bonk(); SFX.crash(.25);
+        st.shake(.08, .85);
+        guards.forEach(g => { g.mode = 'startle'; g.startle = 1; });
+        Kit.puffs(st, { origin: c.g.position.clone().add(V3(0, 1, .4)), count: 8, color: 0xc9bfae, additive: false, speed: 3, sizeMin: .6, sizeMax: 1.4, life: .9, gravity: .2, opacity: .6 });
+        c.g.rotation.set(0, Math.PI / 2 + Kit.rnd(-.3, .3), Math.PI / 2);   // splayed on the wall
+        const p = c.g.position.clone();
+        Kit.wait(Kit.rnd(250, 500)).then(() => Kit.tween(.8, t => {
+          c.g.position.set(p.x, p.y + (WATER_Y - 1.3 - p.y) * t * t, p.z - .4 + (MOAT_Z0 + 1 - p.z + .4) * t);
+          c.g.rotation.z = Math.PI / 2 * (1 - t);
+        }, 'linear')).then(() => { splash(c.g.position); c.tilt = Kit.rnd(-.4, .4); c.state = 'float'; });
+      }
+    }
+  };
+
+  function resetScene() {
+    Kit.clearTweens();
+    dizzy = null; stars.forEach(s => { s.visible = false; });
+    buildHerd();
+    treb.phi = PHI0; treb.beta = -.85;
+    planks.forEach(p => { p.position.copy(p.userData.home); p.rotation.set(0, 0, 0); p.visible = true; });
+    bands.forEach(b => { b.visible = true; });
+    [...crew, ...guards].forEach(p => People.reset(p));
+    idling = true;
+  }
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    if (cows.map(c => c.name).join('|') !== Roster.all().join('|') || cows.some(c => c.state !== 'pen')) buildHerd();
+    idling = false;
+    const cam = Kit.chase(st, { rate: 2.2 });
+    const win = cows.find(c => c.name === winner) || cows[0];
+    const losers = cows.filter(c => c !== win).sort(() => Math.random() - .5);
+    const V = Math.min(3, losers.length);
+    const plan = V === 3 ? ['short', 'moat', 'wall'] : V === 2 ? ['moat', 'wall'] : V === 1 ? [Kit.pickOne(['short', 'moat', 'wall'])] : [];
+    const groups = plan.map(() => []);
+    losers.forEach((c, i) => groups[i % V].push(c));
+    SFX.moo(1);
+
+    const LOAD_SHOT = [[15, 6.5, 16], [3, 2, 4]], FIRE_SHOT = [[46, 15, -18], [0, 6, -30]];
+    for (let v = 0; v < plan.length; v++) {
+      const o = OUTCOMES[plan[v]], group = groups[v];
+      cam.to(...LOAD_SHOT, 2.4);
+      api.caption(v === 0 ? 'Load the cows.' : null);
+      await load(group);
+      await Kit.wait(150);
+      api.caption(null);
+      cam.to(...FIRE_SHOT, 2.4);
+      const flights = [];
+      let tracking = true;
+      await fire(() => {
+        group.forEach(c => {
+          const to = o.target();
+          flights.push(launch(c, to, Kit.rnd(1.2, 1.45), Kit.rnd(9, 13)).then(() => { o.land(c); c.label.dim(); }));
+        });
+        // ride alongside the volley so the cows are more than specks
+        const mid = V3(0, 0, 0);
+        st.add(() => {
+          if (!tracking) return false;
+          mid.set(0, 0, 0); group.forEach(c => mid.add(c.g.position)); mid.divideScalar(group.length);
+          cam.to([mid.x + 21, mid.y + 4, mid.z + 11], [mid.x, mid.y - 1, mid.z - 5], 3.2);
+          return true;
+        });
+      });
+      await Promise.all(flights);
+      await Kit.wait(250);
+      tracking = false;
+      api.caption(o.caption);
+      if (v < plan.length - 1) await Promise.all([reload(), Kit.wait(500)]);
+    }
+
+    // the last cow
+    if (plan.length) await reload();
+    api.caption(plan.length ? 'One cow left.' : 'Load the cow.');
+    cam.to([10, 4.6, 17.5], [0, 1.8, 7.5], 2.6);
+    SFX.moo(1.25);
+    await load([win]);
+    SFX.drumroll(1.1);
+    await Kit.wait(800);
+    api.caption(null);
+    cam.rate(9);
+    let flight;
+    await fire(() => {
+      S.attach(win.g);
+      win.state = 'flying';
+      const from = win.g.position.clone(), to = V3(0, 1.9, WALL_Z + .6);
+      flight = Kit.tween(1.7, t => {
+        const p = win.g.position;
+        p.lerpVectors(from, to, t); p.y += 4 * 12 * t * (1 - t);
+        // a perfect spiral, like a thrown ball
+        win.g.rotation.set(0, Math.PI / 2, 0); win.g.rotateX(Math.pow(1 - t, 2) * 14);
+        cam.to([p.x + 6, p.y + 2.4, p.z + 11], [p.x, p.y - .5, p.z - 8], 9);
+      }, 'linear');
+    });
+    await flight;
+
+    /* ★ THROUGH THE GATE ★ */
+    SFX.crash(.9); SFX.thud(.8); SFX.moo(.75);
+    st.shake(.4, .9);
+    guards.forEach(g => { g.mode = 'startle'; g.startle = 1; });
+    bands.forEach(b => { b.visible = false; });
+    Kit.burst(st, { origin: V3(0, 3, WALL_Z - .5), count: 40, size: .25, color: 0x7a4f2a, speed: 10, dir: V3(0, .3, -1), spread: 1.4, gravity: -18, life: 1.6, floor: .1 });
+    Kit.puffs(st, { origin: V3(0, 3, WALL_Z), count: 12, color: 0xc9b89a, additive: false, speed: 4, sizeMin: 1, sizeMax: 2.4, life: 1.3, gravity: .3, opacity: .7 });
+    planks.forEach(p => {
+      const v = V3(Kit.rnd(-4, 4), Kit.rnd(3, 8), Kit.rnd(-14, -8)), w = V3(Kit.rnd(-6, 6), Kit.rnd(-4, 4), Kit.rnd(-6, 6));
+      st.add(dt => { v.y -= 22 * dt; p.position.addScaledVector(v, dt); p.rotation.x += w.x * dt; p.rotation.z += w.z * dt; if (p.position.y < .3) { p.position.y = .3; v.multiplyScalar(.4); v.y = Math.abs(v.y) * .2; w.multiplyScalar(.5); } return v.lengthSq() > .05; });
+    });
+    const p0 = win.g.position.clone();
+    await Kit.tween(.45, t => {
+      win.g.position.set(0, p0.y * (1 - t) + Math.sin(t * Math.PI) * .6, p0.z + (WALL_Z - 2.6 - p0.z) * t);
+      win.g.rotation.set(0, Math.PI / 2, 0);
+    }, 'outQuad');
+    SFX.thud(.4);
+    // turns round to face the field, dazed
+    Kit.tween(.5, t => { win.g.rotation.y = Math.PI / 2 - Math.PI * t; }, 'inOutQuad');
+    win.state = 'gate';
+    dizzy = win;
+    stars.forEach(s => { s.visible = true; });
+    win.label.highlight(0xffd23f, 1.5);
+    win.label.position.y = 3.1;
+    win.label.material.depthTest = false; win.label.renderOrder = 30;
+    crew.forEach(p => { p.mode = 'cheer'; });
+    SFX.cheer(1.6);
+    cam.to([4.2, 3.3, -48.5], [0, 2.5, WALL_Z - 2.5], 3);
+    api.caption('Breach.');
+    await Kit.wait(1600);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'trebuchet',
+    kicker: 'Breached the castle',
+    stinger: () => { SFX.herald(); setTimeout(() => SFX.moo(1.1), 1500); },
+    tagline: 'Every cow is named. The trebuchet is not accurate. One of them is getting through that gate.',
+    goLabel: 'Loose the cows',
+    againLabel: 'More cows',
+    verdict: n => `The gate is open and ${n} is standing in it, slightly concussed. ${n} goes first.`,
+    prewarm: [new THREE.MeshStandardMaterial({ color: 0x888888 })],
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

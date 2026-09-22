@@ -516,6 +516,110 @@ window.SFX = (function () {
       noise({ dur: .08, freq: 1800, to: 400, gain: .25 });
     },
 
+    /* ---- kaiju ---- */
+    // a low saw growl with a screech on top, tremolo for the rasp
+    roar(dur = 2.2, gain = 1) {
+      const c = ctx(), t = c.currentTime;
+      const out = c.createGain();
+      out.gain.setValueAtTime(.0001, t);
+      out.gain.exponentialRampToValueAtTime(.5 * gain, t + .18);
+      out.gain.setValueAtTime(.45 * gain, t + dur * .7);
+      out.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      const trem = c.createGain(); trem.gain.value = .7;
+      const lfo = c.createOscillator(), lg = c.createGain();
+      lfo.frequency.value = 27; lg.gain.value = .3; lfo.connect(lg); lg.connect(trem.gain);
+      trem.connect(out); out.connect(master);
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 3;
+      lp.frequency.setValueAtTime(500, t); lp.frequency.linearRampToValueAtTime(1500, t + dur * .35); lp.frequency.linearRampToValueAtTime(600, t + dur);
+      lp.connect(trem);
+      [[82, 1], [123, .6], [61, .8]].forEach(([f, g]) => {
+        const o = c.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f * .8, t); o.frequency.linearRampToValueAtTime(f * 1.35, t + dur * .3); o.frequency.linearRampToValueAtTime(f * .7, t + dur);
+        const og = c.createGain(); og.gain.value = .22 * g;
+        o.connect(og); og.connect(lp); o.start(t); o.stop(t + dur + .05);
+      });
+      const sc = c.createOscillator(); sc.type = 'sawtooth';
+      sc.frequency.setValueAtTime(380, t); sc.frequency.linearRampToValueAtTime(820, t + dur * .3); sc.frequency.linearRampToValueAtTime(300, t + dur);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 3;
+      const sg = c.createGain(); sg.gain.value = .12;
+      sc.connect(bp); bp.connect(sg); sg.connect(trem); sc.start(t); sc.stop(t + dur + .05);
+      lfo.start(t); lfo.stop(t + dur + .05);
+      noise({ dur, freq: 600, type: 'bandpass', Q: .8, gain: .16 * gain, attack: .15 });
+    },
+    siren(dur = 5) {                        // air-raid wail
+      const c = ctx(), t = c.currentTime;
+      const o = c.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(260, t);
+      for (let k = 0; k * 2.4 < dur; k++) {
+        o.frequency.linearRampToValueAtTime(760, t + k * 2.4 + 1.3);
+        o.frequency.linearRampToValueAtTime(300, t + k * 2.4 + 2.4);
+      }
+      const g = c.createGain();
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.08, t + .6);
+      g.gain.setValueAtTime(.08, t + dur - .8); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800;
+      o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .05);
+      return { stop(fade = .5) { const n = ctx().currentTime; g.gain.cancelScheduledValues(n); g.gain.setTargetAtTime(.0001, n, fade / 3); } };
+    },
+    beam(dur = 3) {                         // atomic breath: a buzzing, crackling hiss
+      noise({ dur, freq: 2600, type: 'bandpass', Q: .7, gain: .2, attack: .12 });
+      noise({ dur, freq: 400, type: 'lowpass', gain: .25, attack: .2 });
+      tone({ dur, freq: 110, to: 150, type: 'sawtooth', gain: .08, attack: .15, filter: 'lowpass', filterFreq: 900 });
+      tone({ dur, freq: 880, to: 1320, type: 'square', gain: .025, attack: .3 });
+    },
+
+    /* ---- trebuchet ---- */
+    herald() {                              // brass-ish fanfare
+      [[392, 0, .14], [392, .17, .1], [392, .3, .1], [523.25, .43, .42], [392, .9, .14], [523.25, 1.07, .14], [659.25, 1.24, .9]]
+        .forEach(([f, at, dur]) => {
+          tone({ at, freq: f, dur, type: 'sawtooth', gain: .12, attack: .02, filter: 'lowpass', filterFreq: 2200 });
+          tone({ at, freq: f * 1.003, dur, type: 'square', gain: .04, attack: .02, filter: 'lowpass', filterFreq: 1600 });
+        });
+      tone({ at: 1.24, freq: 523.25, dur: .9, type: 'sawtooth', gain: .07, attack: .02, filter: 'lowpass', filterFreq: 1800 });
+    },
+
+    /* ---- pigeons ---- */
+    coo(pitch = 1) {                        // croo-crooo-croo
+      const c = ctx(), t0 = c.currentTime;
+      [[0, .22, 1], [.26, .42, .92], [.74, .26, 1.04]].forEach(([at, dur, k]) => {
+        const t = t0 + at;
+        const o = c.createOscillator(); o.type = 'sine';
+        const f = 300 * pitch * k;
+        o.frequency.setValueAtTime(f * .9, t); o.frequency.linearRampToValueAtTime(f * 1.08, t + dur * .4); o.frequency.linearRampToValueAtTime(f * .85, t + dur);
+        const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 22; vg.gain.value = f * .05;
+        vib.connect(vg); vg.connect(o.frequency);
+        const g = c.createGain();
+        g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2, t + .05); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+        o.connect(lp); lp.connect(g); g.connect(master);
+        o.start(t); vib.start(t); o.stop(t + dur + .05); vib.stop(t + dur + .05);
+      });
+    },
+    flap(n = 8, gain = .12) {
+      for (let i = 0; i < n; i++) noise({ at: i * .065 + Math.random() * .02, dur: .05, freq: 500 + Math.random() * 400, type: 'bandpass', Q: .9, gain });
+    },
+    whistle(dur = 1.2) {                    // the falling-bomb whistle
+      tone({ freq: 2300, to: 520, exp: false, dur, type: 'sine', gain: .12, attack: .04 });
+    },
+    laugh(dur = 1.8) {                      // a few people going "ha ha ha"
+      const c = ctx(), t0 = c.currentTime;
+      for (let v = 0; v < 7; v++) {
+        const f0 = 140 + Math.random() * 220, start = t0 + Math.random() * .25, rate = .14 + Math.random() * .06;
+        const o = c.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f0 * 1.2, start); o.frequency.linearRampToValueAtTime(f0 * .85, start + dur);
+        const b1 = c.createBiquadFilter(); b1.type = 'bandpass'; b1.frequency.value = 760; b1.Q.value = 4;
+        const b2 = c.createBiquadFilter(); b2.type = 'bandpass'; b2.frequency.value = 1200; b2.Q.value = 6;
+        const g = c.createGain(); g.gain.setValueAtTime(.0001, start);
+        for (let at = 0; at < dur - .1; at += rate) {
+          const pk = .045 * (1 - at / dur * .6);
+          g.gain.exponentialRampToValueAtTime(pk, start + at + .025);
+          g.gain.exponentialRampToValueAtTime(.0001, start + at + rate * .8);
+        }
+        o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(master);
+        o.start(start); o.stop(start + dur + .05);
+      }
+    },
+
     sadTrombone() {
       const seq = [[311.13, 0], [293.66, 0.22], [277.18, 0.44], [261.63, 0.66]];
       seq.forEach(([f, at]) => tone({ at, freq: f, to: f * 0.97, dur: at === 0.66 ? 0.9 : 0.24, type: 'sawtooth', gain: 0.13, filter: 'lowpass', filterFreq: 900 }));

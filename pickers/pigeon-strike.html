@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pigeon Strike — Crazy Pickers</title>
+<meta name="description" content="The team is on a park bench. One pigeon has made a decision. One of fifteen unhinged 3D standup name pickers.">
+<link rel="canonical" href="https://elliej.dev/crazy-pickers/pickers/pigeon-strike.html">
+<meta name="theme-color" content="#05060c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Crazy Pickers">
+<meta property="og:title" content="Pigeon Strike — Crazy Pickers">
+<meta property="og:description" content="The team is on a park bench. One pigeon has made a decision. One of fifteen unhinged 3D standup name pickers.">
+<meta property="og:url" content="https://elliej.dev/crazy-pickers/pickers/pigeon-strike.html">
+<meta property="og:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crazy Pickers: a chaotic sticker collage of a crashing car, a cat coughing up a hairball, a toilet, a batter and a zombie, with the words WHO GOES FIRST?!">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pigeon Strike — Crazy Pickers">
+<meta name="twitter:description" content="The team is on a park bench. One pigeon has made a decision. One of fifteen unhinged 3D standup name pickers.">
+<meta name="twitter:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Pigeon Strike</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.1, far: 500 });
+  const S = st.scene;
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  const sky = Kit.gradientSky([[0, '#3d86e0'], [.38, '#86c0f4'], [.49, '#e4f2ff'], [.52, '#a9c79a'], [1, '#5c8a4c']]);
+  S.background = sky;
+  Kit.env(st, sky);
+  S.fog = new THREE.Fog(0xd6e8f8, 60, 260);
+
+  S.add(new THREE.HemisphereLight(0xe4f0ff, 0x4f7a3f, 1.05));
+  S.add(new THREE.AmbientLight(0xffffff, .25));
+  const sun = new THREE.DirectionalLight(0xfff2dc, 2.4);
+  sun.position.set(18, 30, 14); sun.target.position.set(0, 0, 0); S.add(sun.target);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 5, far: 90 });
+  sun.shadow.bias = -0.0005;
+  S.add(sun);
+
+  /* ---------- the park ---------- */
+  const std = (color, roughness = .8, extra) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness }, extra || {}));
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(140, 48), std(0x6fae4f, 1));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; S.add(ground);
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(60, 7.5), std(0xcfbd96, 1));
+  path.rotation.x = -Math.PI / 2; path.position.set(0, .01, 5.6); path.receiveShadow = true; S.add(path);
+  const leafMat = std(0x4f9440, 1, { flatShading: true }), leafMat2 = std(0x3f7f36, 1, { flatShading: true }), trunkMat = std(0x6a4a30, 1);
+  const LEAF = new THREE.IcosahedronGeometry(1, 0), TRUNK = new THREE.CylinderGeometry(.25, .4, 1, 7);
+  function tree(x, z, s) {
+    const t = new THREE.Mesh(TRUNK, trunkMat); t.scale.set(s, 3.4 * s, s); t.position.set(x, 1.7 * s, z); t.castShadow = true; S.add(t);
+    [[0, 4.4, 0, 2.3], [.9, 3.8, .4, 1.5], [-.8, 4, -.3, 1.6]].forEach(([dx, y, dz, r], i) => {
+      const l = new THREE.Mesh(LEAF, i ? leafMat2 : leafMat); l.scale.setScalar(r * s); l.position.set(x + dx * s, y * s, z + dz * s); l.castShadow = true; S.add(l);
+    });
+  }
+  for (let i = 0; i < 16; i++) { const a = -Math.PI * .9 + i / 15 * Math.PI * .8; tree(Math.sin(a) * Kit.rnd(20, 30), -Math.abs(Math.cos(a)) * Kit.rnd(16, 26) - 4, Kit.rnd(.9, 1.4)); }
+  [-16, 16].forEach(x => tree(x, 14, 1.2));
+  // lamp posts and a bin
+  [-8.5, 8.5].forEach(x => {
+    const post = Kit.cyl(.08, .12, 4.2, 0x2b2f38, 8, { metalness: .6, roughness: .4 }); post.position.set(x, 2.1, 2.2); S.add(post);
+    const lamp = Kit.ball(.3, 0xfff6d8, 12, { emissive: 0xfff0c0, emissiveIntensity: .4 }); lamp.position.set(x, 4.35, 2.2); S.add(lamp);
+  });
+  const bin = Kit.cyl(.35, .3, .9, 0x3a6a4a, 12, { roughness: .6 }); bin.position.set(-6.5, .45, 4.2); S.add(bin);
+  // the city beyond the trees
+  {
+    const n = 34, im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), std(0xb4bfd0, .9), n), d = new THREE.Object3D(), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const h = Kit.rnd(12, 46), x = -110 + i * 6.6 + Kit.rnd(-2, 2);
+      d.position.set(x, h / 2, -95 + Kit.rnd(-10, 10)); d.scale.set(Kit.rnd(5, 9), h, 6); d.updateMatrix();
+      im.setMatrixAt(i, d.matrix); im.setColorAt(i, c.set(Kit.pickOne([0xb4bfd0, 0xa6b0c4, 0xc4ccd8, 0x9aa6ba])));
+    }
+    S.add(im);
+  }
+
+  /* ---------- benches ---------- */
+  // Two arcs of benches round a point in front of them, so every face is
+  // towards the camera. Two people per bench.
+  const O = V3(0, 0, 10), SEAT_Y = .62;
+  const slatMat = std(0x9a6a3a, .85), ironMat = std(0x2b2f38, .5, { metalness: .5 });
+  const SLAT = new THREE.BoxGeometry(2.7, .07, .15), BACK = new THREE.BoxGeometry(2.7, .13, .06), LEG = new THREE.BoxGeometry(.08, .62, .5), ARM = new THREE.BoxGeometry(.08, .08, .5);
+  function makeBench() {
+    const g = new THREE.Group();
+    [-.16, 0, .16].forEach(z => { const s = new THREE.Mesh(SLAT, slatMat); s.position.set(0, SEAT_Y - .035, z); s.castShadow = s.receiveShadow = true; g.add(s); });
+    [.86, 1.08].forEach(y => { const b = new THREE.Mesh(BACK, slatMat); b.position.set(0, y, -.3); b.rotation.x = -.12; b.castShadow = true; g.add(b); });
+    [-1.25, 1.25].forEach(x => {
+      const l = new THREE.Mesh(LEG, ironMat); l.position.set(x, SEAT_Y / 2 - .03, 0); g.add(l);
+      const a = new THREE.Mesh(ARM, ironMat); a.position.set(x, SEAT_Y + .22, 0); g.add(a);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(.06, .6, .06), ironMat); back.position.set(x, .95, -.3); g.add(back);
+    });
+    return g;
+  }
+  let benches = [], people = [];
+
+  /* ---------- sitting ---------- */
+  // People runs in 'pose' mode here; this does the seated body language.
+  function sit(p, tt, dt) {
+    const A = p.arms, L = p.legPivots, H = p.hips, ph = p.phase, s = p.seat;
+    L[0].rotation.x = -1.45 + Math.sin(tt * 1.3 + ph) * .04; L[1].rotation.x = -1.45 + Math.cos(tt * 1.1 + ph) * .04;
+    L[0].rotation.z = .08; L[1].rotation.z = -.08;
+    H.position.y = 0; H.rotation.z = 0;
+    switch (s.state) {
+      case 'phone':
+        H.rotation.x = .12;
+        A[0].rotation.set(-1.05, 0, .38); A[1].rotation.set(-1.05 + Math.sin(tt * 3 + ph) * .03, 0, -.38);
+        p.phone.visible = true;
+        break;
+      case 'look':
+        H.rotation.x = -.1;
+        A[0].rotation.set(-.45, 0, .12); A[1].rotation.set(-.45, 0, -.12);
+        p.phone.visible = true;
+        break;
+      case 'flinch':
+        s.k = Math.max(0, s.k - dt * 1.4);
+        H.rotation.x = -.1 - .35 * s.k;
+        A[0].rotation.set(-.45 - 1.9 * s.k, 0, .12 + .5 * s.k); A[1].rotation.set(-.45 - 1.9 * s.k, 0, -.12 - .5 * s.k);
+        if (s.k <= 0) s.state = 'look';
+        break;
+      case 'laugh':
+        H.rotation.x = -.05 + Math.sin(tt * 15 + ph) * .14;
+        A[0].rotation.set(-.7 + Math.sin(tt * 15 + ph) * .15, 0, .45);
+        A[1].rotation.set(-1.55, 0, -.1);                     // pointing
+        break;
+      case 'hit':
+        H.rotation.x = -.15;
+        A[0].rotation.set(-2.5 + Math.sin(tt * 26) * .5, 0, .6); A[1].rotation.set(-2.5 + Math.cos(tt * 24) * .5, 0, -.6);
+        H.rotation.z = Math.sin(tt * 22) * .1;
+        p.phone.visible = false;
+        break;
+      case 'why':
+        H.rotation.x = -.12;
+        A[0].rotation.set(-1.9, 0, .95 + Math.sin(tt * 2) * .05); A[1].rotation.set(-1.9, 0, -.95 - Math.sin(tt * 2) * .05);
+        p.phone.visible = false;
+        break;
+    }
+  }
+
+  function labelFor(name, i) {
+    const l = Kit.label(st, name, { height: .5, minScreen: .026 });
+    l.position.y = 2.25 + (i % 2) * .5;                       // neighbours alternate heights
+    return l;
+  }
+  function seatEveryone() {
+    benches.forEach(b => S.remove(b)); benches = [];
+    people.forEach(p => { p.label.dispose(); S.remove(p.g); }); people = [];
+    const names = Roster.all();
+    const B = Math.ceil(names.length / 2);
+    const front = B <= 5 ? B : Math.ceil(B / 2), back = B - front;
+    // the back row sits in the gaps of the front row, never directly behind it
+    const SP = .36;
+    const rows = [{ r: 10, k: front, off: 0 }, { r: 13.6, k: back, off: back === front ? .5 : 0 }];
+    let ni = 0;
+    rows.forEach(row => {
+      for (let j = 0; j < row.k; j++) {
+        const th = (j - (row.k - 1) / 2 + row.off) * SP;
+        const b = makeBench();
+        b.position.set(O.x + Math.sin(th) * row.r, 0, O.z - Math.cos(th) * row.r);
+        b.rotation.y = -th;
+        S.add(b); benches.push(b);
+        b.updateMatrixWorld();
+        [-.65, .65].forEach(sx => {
+          if (ni >= names.length) return;
+          const w = b.localToWorld(V3(sx, 0, .06));
+          const scale = Kit.rnd(.92, 1.08);
+          const p = People.make({ x: w.x, y: SEAT_Y - .72 * scale + .02, z: w.z, facing: -th, name: names[ni], scale });
+          p.mode = 'pose';
+          p.seat = { state: 'phone', k: 0 };
+          p.label = labelFor(names[ni], ni); p.g.add(p.label);
+          p.phone = Kit.box(.13, .22, .025, 0x16161c, { emissive: 0x9fd4ff, emissiveIntensity: .5, roughness: .3 });
+          p.phone.position.set(0, -.63, .06); p.phone.rotation.x = .6;
+          p.arms[1].add(p.phone);
+          p.facingV = V3(-Math.sin(th), 0, Math.cos(th));      // towards O
+          S.add(p.g); people.push(p);
+          ni++;
+        });
+      }
+    });
+  }
+  seatEveryone();
+
+  /* ---------- pigeons ---------- */
+  const pm = {
+    body: std(0x9097a8, .7), dark: std(0x5f6677, .8), neck: std(0x4f8f80, .3, { metalness: .55 }),
+    beak: std(0x3b3434, .6), eye: std(0xff8a1a, .3, { emissive: 0xff6a00, emissiveIntensity: .35 }), cere: std(0xf2efe8, .6), feet: std(0xd8707a, .7)
+  };
+  const SPH = new THREE.SphereGeometry(1, 12, 9), BEAK = new THREE.ConeGeometry(.035, .13, 6), WING = new THREE.BoxGeometry(.5, .035, .32),
+    TIP = new THREE.BoxGeometry(.24, .03, .24), TAIL = new THREE.BoxGeometry(.22, .03, .3), FEET = new THREE.BoxGeometry(.2, .12, .06);
+  function m(geo, mat, parent, p, s) { const x = new THREE.Mesh(geo, mat); x.position.set(p[0], p[1], p[2]); if (s) x.scale.set(s[0], s[1], s[2]); x.castShadow = true; parent.add(x); return x; }
+  const PSCALE = .82, PIG_Y = .34 * PSCALE;
+  function makePigeon() {
+    const g = new THREE.Group(); g.scale.setScalar(PSCALE);
+    m(SPH, pm.body, g, [0, 0, 0], [.26, .23, .42]);
+    m(SPH, pm.neck, g, [0, .13, .24], [.17, .19, .17]);
+    const head = new THREE.Group(); head.position.set(0, .27, .34); g.add(head);
+    m(SPH, pm.body, head, [0, 0, 0], [.13, .13, .14]);
+    const beak = m(BEAK, pm.beak, head, [0, -.02, .16]); beak.rotation.x = Math.PI / 2;
+    m(SPH, pm.cere, head, [0, .015, .11], [.035, .03, .04]);
+    [-1, 1].forEach(sx => m(SPH, pm.eye, head, [sx * .085, .04, .06], [.028, .028, .028]));
+    const wings = [-1, 1].map(sx => {
+      const pv = new THREE.Group(); pv.position.set(sx * .17, .1, .02); g.add(pv);
+      m(WING, pm.dark, pv, [sx * .25, 0, -.04]);
+      m(TIP, pm.dark, pv, [sx * .58, 0, -.1]);
+      pv.userData.sx = sx; return pv;
+    });
+    const tail = m(TAIL, pm.dark, g, [0, .02, -.5]); tail.rotation.x = .15;
+    const feet = m(FEET, pm.feet, g, [0, -.28, .03]);
+    S.add(g);
+    return { g, head, wings, feet, state: 'peck', ph: Math.random() * 6.28, orbit: null, path: null, perch: null };
+  }
+  const FLOCK = V3(0, 8.6, -1.5);
+  const pigeons = [];
+  for (let i = 0; i < 14; i++) {
+    const p = makePigeon();
+    p.orbit = { r: 7 + Kit.rnd(-1.6, 1.8), h: Kit.rnd(-1.2, 1.6), th: i / 14 * Math.PI * 2 + Kit.rnd(-.2, .2), w: .95 + Kit.rnd(-.12, .12) };
+    pigeons.push(p);
+  }
+  function scatterOnPath() {
+    pigeons.forEach((p, i) => {
+      p.state = 'peck'; p.path = null; p.perch = null;
+      if (p.g.parent !== S) S.attach(p.g);
+      p.g.scale.setScalar(PSCALE);
+      p.g.position.set(Kit.rnd(-7, 7), PIG_Y, Kit.rnd(3.4, 8.2));
+      p.g.rotation.set(0, Kit.rnd(0, 6.28), 0);
+      p.home = p.g.position.clone();
+    });
+  }
+  scatterOnPath();
+  function orbitPos(p, th, out) {
+    const o = p.orbit;
+    return (out || V3(0, 0, 0)).set(FLOCK.x + Math.cos(th) * o.r, FLOCK.y + o.h + Math.sin(th * 2 + p.ph) * .4, FLOCK.z + Math.sin(th) * o.r);
+  }
+  const _v = V3(0, 0, 0), _t = V3(0, 0, 0);
+  function flap(p, tt, speed = 16, amp = .85) { p.wings.forEach(w => { w.rotation.z = w.userData.sx * Math.sin(tt * speed + p.ph) * amp; }); }
+  function fold(p) { p.wings.forEach(w => { w.rotation.z = -w.userData.sx * 1.25; }); }
+  // fly a curve; the last point is where the flock will be at the end, so it rejoins cleanly
+  function flyPath(p, pts, dur, onU) {
+    return new Promise(resolve => {
+      p.state = 'path';
+      p.path = { curve: new THREE.CatmullRomCurve3(pts, false, 'centripetal'), u: 0, dur, onU, resolve };
+    });
+  }
+  function pigeonTick(p, tt, dt) {
+    p.orbit.th += p.orbit.w * dt;
+    if (p.state === 'peck') {
+      fold(p); p.feet.visible = true;
+      const k = Math.max(0, Math.sin(tt * 4 + p.ph));
+      p.head.position.set(0, .27 - k * .2, .34 + k * .1);
+      p.head.rotation.x = k * .9;
+      p.g.rotation.x = k * .15;
+      if (Math.sin(tt * .7 + p.ph * 3) > .96) p.g.rotation.y += dt * 2;
+    } else if (p.state === 'fly') {
+      p.feet.visible = false;
+      orbitPos(p, p.orbit.th, p.g.position);
+      orbitPos(p, p.orbit.th + .1, _t);
+      p.g.lookAt(_t); p.g.rotateZ(-.4);
+      flap(p, tt, 13, .7);
+      p.head.position.set(0, .27, .34); p.head.rotation.x = 0;
+    } else if (p.state === 'path') {
+      p.feet.visible = false;
+      const P = p.path;
+      P.u = Math.min(1, P.u + dt / P.dur);
+      P.curve.getPointAt(P.u, p.g.position);
+      P.curve.getTangentAt(Math.min(.999, P.u), _v);
+      _t.copy(p.g.position).add(_v);
+      p.g.lookAt(_t);
+      flap(p, tt, 17, .9);
+      if (P.onU) P.onU(P.u, p);
+      if (P.u >= 1) { p.state = 'fly'; const r = P.resolve; p.path = null; r(); }
+    } else if (p.state === 'perch') {
+      fold(p); p.feet.visible = true;
+      const k = Math.max(0, Math.sin(tt * 3.2 + p.ph));
+      p.head.position.set(0, .27 + k * .04, .34 + k * .08);
+      p.head.rotation.x = -k * .2;
+    }
+  }
+
+  /* ---------- props for the strike ---------- */
+  const poopMat = std(0xf6f6ef, .3), poopMid = std(0x8f977c, .6);
+  const poop = new THREE.Group();
+  m(SPH, poopMat, poop, [0, 0, 0], [.09, .12, .09]); m(SPH, poopMid, poop, [0, .02, .03], [.04, .05, .04]);
+  poop.visible = false; S.add(poop);
+  let splats = [];
+  function makeSplat(parent, p, big) {
+    const g = new THREE.Group(); g.position.copy(p);
+    const s = big ? 1 : .7;
+    m(SPH, poopMat, g, [0, 0, 0], [.19 * s, .05 * s, .17 * s]);
+    m(SPH, poopMat, g, [.1 * s, .01, .07 * s], [.08 * s, .04 * s, .08 * s]);
+    m(SPH, poopMid, g, [-.03, .03, 0], [.06 * s, .03 * s, .06 * s]);
+    if (big) [[.14, -.09, .06], [-.15, -.12, .02], [.02, -.1, .15]].forEach(([x, y, z]) => m(SPH, poopMat, g, [x, y, z], [.04, .09, .04]));
+    parent.add(g); splats.push(g);
+    return g;
+  }
+  const reticle = (() => {
+    const [c, x] = Kit.makeCanvas(128, 128);
+    x.strokeStyle = '#ff2a3a'; x.lineWidth = 7;
+    x.beginPath(); x.arc(64, 64, 44, 0, Math.PI * 2); x.stroke();
+    x.lineWidth = 5;
+    [[64, 6, 64, 36], [64, 92, 64, 122], [6, 64, 36, 64], [92, 64, 122, 64]].forEach(([a, b, cc, d]) => { x.beginPath(); x.moveTo(a, b); x.lineTo(cc, d); x.stroke(); });
+    x.fillStyle = '#ff2a3a'; x.beginPath(); x.arc(64, 64, 6, 0, Math.PI * 2); x.fill();
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.texFromCanvas(c), depthTest: false, transparent: true }));
+    s.renderOrder = 40; s.visible = false; S.add(s); return s;
+  })();
+
+  /* ---------- ambience ---------- */
+  let tt = 0, idling = true, reticleOn = null;
+  st.add(dt => {
+    tt += dt;
+    people.forEach(p => { People.animate(p, tt, dt); sit(p, tt, dt); });
+    pigeons.forEach(p => pigeonTick(p, tt, dt));
+    if (reticleOn) {
+      const h = reticleOn.head.getWorldPosition(_v);
+      reticle.position.set(h.x, h.y + .15, h.z);
+      const pulse = 1 + Math.sin(tt * 12) * .12;
+      reticle.scale.set(.75 * pulse, .75 * pulse, 1);
+      reticle.material.rotation = tt * 1.5;
+    }
+    if (idling) st.look([Math.sin(tt * .12) * 4, 3.4, 15.5 + Math.cos(tt * .12) * 1.2], [0, 1.5, .5]);
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    splats.forEach(s => s.parent && s.parent.remove(s)); splats = [];
+    poop.visible = false; reticle.visible = false; reticleOn = null;
+    scatterOnPath();
+    seatEveryone();
+    idling = true;
+  }
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    if (people.map(p => p.name).join('|') !== Roster.all().join('|') || splats.length) { resetScene(); }
+    idling = false;
+    const cam = Kit.chase(st, { rate: 2.2 });
+    const target = people.find(p => p.name === winner) || people[0];
+    const others = people.filter(p => p !== target);
+
+    // something spooks them
+    api.caption('Something has spooked the pigeons.');
+    cam.to([0, 2.1, 14.5], [0, 3.6, 0]);
+    SFX.flap(16, .14); SFX.coo(1.1);
+    others.concat([target]).forEach(p => { setTimeout(() => { p.seat.state = 'look'; }, Kit.rnd(200, 900)); });
+    const takeoff = pigeons.map((p, i) => Kit.wait(i * 60).then(() => {
+      const from = p.g.position.clone(), dur = Kit.rnd(1.5, 2);
+      const end = orbitPos(p, p.orbit.th + p.orbit.w * dur);
+      return flyPath(p, [from, from.clone().add(V3(Kit.rnd(-1, 1), 1.4, Kit.rnd(-1, 1))), from.clone().lerp(end, .5).add(V3(0, 2.5, 0)), end], dur);
+    }));
+    await Kit.wait(900);
+    SFX.flap(10, .1);
+    await Promise.all(takeoff);
+    api.caption(null);
+    cam.to([0, 2.6, 15], [0, 5, -1], 1.8);
+    SFX.coo(.95);
+    await Kit.wait(900);
+
+    // near misses
+    const victims = others.slice().sort(() => Math.random() - .5).slice(0, Math.min(2, others.length));
+    for (let v = 0; v < victims.length; v++) {
+      const vic = victims[v];
+      const bird = pigeons[(v * 5 + 3) % pigeons.length];
+      const h = vic.head.getWorldPosition(V3(0, 0, 0)), f = vic.facingV;
+      const side = V3(f.z, 0, -f.x).multiplyScalar(v % 2 ? 1 : -1);
+      const miss = h.clone().setY(0).addScaledVector(side, .95).addScaledVector(f, .55);
+      const dur = 1.9;
+      const pts = [bird.g.position.clone(), h.clone().addScaledVector(f, -5).add(V3(0, 5.5, 0)), h.clone().addScaledVector(side, .9).add(V3(0, 3.4, 0)),
+        h.clone().addScaledVector(f, 5).add(V3(0, 5, 0)), orbitPos(bird, bird.orbit.th + bird.orbit.w * dur)];
+      let dropped = false;
+      cam.to(h.clone().addScaledVector(f, 6.5).addScaledVector(side, -1.5).add(V3(0, 1.1, 0)).toArray(), h.clone().add(V3(0, .6, 0)).toArray(), 2.4);
+      const fall = flyPath(bird, pts, dur, u => {
+        if (!dropped && u > .45) {
+          dropped = true;
+          SFX.whistle(.7);
+          const from = bird.g.position.clone();
+          poop.visible = true;
+          Kit.tween(.6, t => { poop.position.set(from.x + (miss.x - from.x) * t, from.y + (miss.y - from.y) * t * t, from.z + (miss.z - from.z) * t); }, 'linear').then(() => {
+            poop.visible = false;
+            SFX.splat(.3);
+            makeSplat(S, V3(miss.x, .03, miss.z), false);
+            vic.seat.state = 'flinch'; vic.seat.k = 1;
+            SFX.scream(1.6);
+          });
+        }
+      });
+      if (v === 0) api.caption('Close.');
+      await Kit.wait(1500);
+      api.caption(null);
+      await fall;
+    }
+
+    // the real one
+    const bird = pigeons[0];
+    const H = target.head.getWorldPosition(V3(0, 0, 0)), f = target.facingV, side = V3(f.z, 0, -f.x);
+    api.caption('One of them has made a decision.');
+    SFX.coo(.8);
+    reticleOn = target; reticle.visible = true;
+    SFX.tone({ freq: 880, dur: .1, type: 'square', gain: .08 }); SFX.tone({ at: .15, freq: 880, dur: .1, type: 'square', gain: .08 }); SFX.tone({ at: .3, freq: 1320, dur: .3, type: 'square', gain: .08 });
+    const top = H.clone().add(V3(0, .2, 0));
+    const DROP = H.clone().addScaledVector(f, -1.3).add(V3(0, 4.4, 0));
+    const pts = [bird.g.position.clone(), H.clone().addScaledVector(f, -9).add(V3(0, 7.5, 0)), H.clone().addScaledVector(f, -4).add(V3(0, 5.2, 0)), DROP,
+      H.clone().addScaledVector(f, 3).add(V3(0, 4.8, 0)), H.clone().addScaledVector(f, 7).addScaledVector(side, 3).add(V3(0, 5.5, 0))];
+    // bombardier's view: ride just behind it
+    cam.rate(7);
+    let dropped = false, fallDone, lastD = Infinity;
+    const drop = from => {
+      dropped = true;
+      api.caption(null);
+      // clear the sky over their head: everyone else is out of it now
+      others.forEach(p => p.label.retire(.3));
+      target.label.visible = false;
+      SFX.whistle(1.1);
+      poop.visible = true;
+      cam.to(H.clone().addScaledVector(f, 2.9).addScaledVector(side, .5).add(V3(0, .05, 0)).toArray(), H.clone().add(V3(0, .6, 0)).toArray(), 5);
+      fallDone = Kit.tween(1.05, t => {
+        poop.position.set(from.x + (top.x - from.x) * t, from.y + (top.y - from.y) * t * t, from.z + (top.z - from.z) * t);
+      }, 'linear');
+    };
+    const strike = flyPath(bird, pts, 3, (u, p) => {
+      if (dropped) return;
+      _v.copy(p.g.position);
+      const tan = p.path.curve.getTangentAt(Math.min(.999, u));
+      cam.to(_v.clone().addScaledVector(tan, -3.2).add(V3(0, 1.3, 0)).toArray(), _v.clone().addScaledVector(tan, 3.5).add(V3(0, -2.4, 0)).toArray(), 7);
+      // release at the closest pass over the drop point, however coarse the frames
+      const d = p.g.position.distanceTo(DROP);
+      if (d < .35 || (d > lastD && lastD < 1.5)) drop(p.g.position.clone());
+      lastD = d;
+    }).then(() => { if (!dropped) drop(bird.g.position.clone()); });
+    while (!fallDone) await Kit.wait(30);
+    await fallDone;
+
+    /* ★ SPLAT ★ */
+    poop.visible = false; reticle.visible = false; reticleOn = null;
+    SFX.splat(.7); SFX.squelch(.4);
+    st.shake(.12, .85);
+    const splat = makeSplat(target.hips, V3(0, 1.64, .02), true);
+    splat.scale.setScalar(.2);
+    Kit.tween(.25, t => splat.scale.setScalar(.2 + t * .85), 'outBack');
+    Kit.puffs(st, { origin: top.clone(), count: 10, color: 0xffffff, additive: false, speed: 2.5, sizeMin: .08, sizeMax: .2, life: .6, gravity: -6, opacity: .9 });
+    target.seat.state = 'hit';
+    target.label.visible = true;
+    target.label.highlight(0xffd23f, 1.4);
+    target.label.position.y = 3.05;
+    target.label.material.depthTest = false; target.label.renderOrder = 30;
+    setTimeout(() => { SFX.laugh(2.4); others.forEach(p => { setTimeout(() => { p.seat.state = 'laugh'; }, Kit.rnd(0, 400)); }); }, 350);
+    await Kit.wait(1100);
+    target.seat.state = 'why';
+    await strike;
+
+    // and it lands on the evidence
+    const perchW = target.hips.localToWorld(V3(0, 1.68 + .31 * PSCALE / target.g.scale.y, 0));
+    SFX.flap(8, .1);
+    await flyPath(bird, [bird.g.position.clone(), H.clone().addScaledVector(f, 3.5).addScaledVector(side, -1.5).add(V3(0, 2.8, 0)), H.clone().addScaledVector(f, .8).add(V3(0, 1.2, 0)), perchW], 1.5);
+    target.hips.attach(bird.g);
+    bird.g.position.set(0, 1.68 + .31 * PSCALE / target.g.scale.y, 0);
+    bird.g.rotation.set(0, 0, 0);
+    bird.state = 'perch';
+    SFX.coo(1);
+    cam.to(H.clone().addScaledVector(f, 3.3).add(V3(0, .35, 0)).toArray(), H.clone().add(V3(0, .6, 0)).toArray(), 3);
+    await Kit.wait(1100);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'pigeon-strike',
+    kicker: 'Direct hit',
+    stinger: () => { SFX.coo(1.05); SFX.laugh(1.4); },
+    tagline: 'The team is on the benches. The pigeons are on the path. It is all very peaceful.',
+    goLabel: 'Spook the pigeons',
+    againLabel: 'Wipe and go again',
+    verdict: n => `Scientifically, it is good luck. ${n} goes first, and should probably find a tissue.`,
+    prewarm: [new THREE.MeshStandardMaterial({ color: 0x888888 })],
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

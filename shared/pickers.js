@@ -24,5 +24,11 @@ window.PICKERS = [
   { key: 'zombie-outbreak', emoji: '🧟', accent: '#7cff5e', accent2: '#ff3b3b', title: 'Zombie Outbreak',
     blurb: 'The car park is overrun. Last one uninfected has the floor.' },
   { key: 'foul-ball',       emoji: '⚾', accent: '#4cc9f0', accent2: '#ff5a5f', title: 'Foul Ball',
-    blurb: 'One swing, one fan in the stands, one very sore head.' }
+    blurb: 'One swing, one fan in the stands, one very sore head.' },
+  { key: 'kaiju-rampage',   emoji: '🦖', accent: '#5fe3ff', accent2: '#ff8a3d', title: 'Kaiju Rampage',
+    blurb: 'A city of names. Something in the harbour spares one building.' },
+  { key: 'trebuchet',       emoji: '🏰', accent: '#e8b04a', accent2: '#9be36a', title: 'Cow Trebuchet',
+    blurb: 'Named cows versus a castle gate. The cows are mostly losing.' },
+  { key: 'pigeon-strike',   emoji: '🐦', accent: '#b9c3d6', accent2: '#8fe0a8', title: 'Pigeon Strike',
+    blurb: 'The team is on a park bench. One pigeon has made a decision.' }
 ];

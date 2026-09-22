@@ -1,6 +1,6 @@
 # Crazy Pickers
 
-Twelve stupid ways to decide who talks first in standup. Each one is a 3D scene
+Fifteen stupid ways to decide who talks first in standup. Each one is a 3D scene
 with sound. No build step, no dependencies, no network.
 
 **[Open them →](https://elliej.dev/crazy-pickers/)**
@@ -21,6 +21,9 @@ with sound. No build step, no dependencies, no network.
 | 📟 | **Microwave Meltdown** | Names in foil, twelve seconds, one legible survivor |
 | 🧟 | **Zombie Outbreak** | A supermarket car park is overrun. Last one uninfected has the floor |
 | ⚾ | **Foul Ball** | One swing, one fan in the stands, one very sore head |
+| 🦖 | **Kaiju Rampage** | A city of named buildings. A lizard from the harbour spares one, then roars at it |
+| 🏰 | **Cow Trebuchet** | Named cows flung at a castle. All fall short except the one that goes through the gate |
+| 🐦 | **Pigeon Strike** | The team on park benches. Two near misses, one direct hit |
 
 ## Names
 
