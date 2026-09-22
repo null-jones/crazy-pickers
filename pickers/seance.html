@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Standup Séance</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -162,32 +163,40 @@
   /* ---------- planchette ---------- */
   const planchette = new THREE.Group();
   (function () {
+    // A long teardrop with the tip pointing up the board and the viewing lens
+    // near the tip. The old round one with a centred hole read as a doughnut.
     const shape = new THREE.Shape();
-    shape.moveTo(0, .42);
-    shape.bezierCurveTo(.34, .3, .42, -.06, .3, -.3);
-    shape.bezierCurveTo(.12, -.44, -.12, -.44, -.3, -.3);
-    shape.bezierCurveTo(-.42, -.06, -.34, .3, 0, .42);
+    shape.moveTo(0, .66);
+    shape.bezierCurveTo(.16, .44, .42, .06, .38, -.2);
+    shape.bezierCurveTo(.34, -.44, -.34, -.44, -.38, -.2);
+    shape.bezierCurveTo(-.42, .06, -.16, .44, 0, .66);
     const hole = new THREE.Path();
-    hole.absarc(0, .1, .14, 0, Math.PI * 2, true);
+    hole.absarc(0, .24, .12, 0, Math.PI * 2, true);
     shape.holes.push(hole);
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: .07, bevelEnabled: true, bevelSize: .02, bevelThickness: .02, bevelSegments: 2, curveSegments: 18 });
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: .06, bevelEnabled: true, bevelSize: .025, bevelThickness: .025, bevelSegments: 3, curveSegments: 24 });
     geo.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x6b4426, roughness: .4, metalness: .1 }));
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: .35, metalness: .05 }));
     m.castShadow = true;
     planchette.add(m);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(.15, .022, 10, 26),
-      new THREE.MeshStandardMaterial({ color: 0xd9c188, roughness: .25, metalness: .9 }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.13, .02, 10, 28),
+      new THREE.MeshStandardMaterial({ color: 0xe0c583, roughness: .2, metalness: .9 }));
     ring.rotation.x = Math.PI / 2;
-    ring.position.set(0, .075, -.1);
+    ring.position.set(0, .075, -.24);
     planchette.add(ring);
-    [-1, 1].forEach(sx => {
-      const leg = Kit.cyl(.05, .05, .07, 0x3a2412, 10, { roughness: .6 });
-      leg.position.set(sx * .22, -.02, .2);
-      planchette.add(leg);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(.12, 24),
+      new THREE.MeshStandardMaterial({ color: 0xcfe8ff, roughness: .05, metalness: .1, transparent: true, opacity: .35 }));
+    lens.rotation.x = -Math.PI / 2;
+    lens.position.set(0, .06, -.24);
+    planchette.add(lens);
+    [[-.24, .22], [.24, .22], [0, -.52]].forEach(([x, z]) => {
+      const foot = Kit.cyl(.045, .045, .07, 0x3a2412, 10, { roughness: .6 });
+      foot.position.set(x, -.02, z);
+      planchette.add(foot);
     });
   })();
   planchette.position.set(0, TABLE_Y + .12, .35);
   S.add(planchette);
+  const LENS_OFFSET = new THREE.Vector3(0, 0, .24);
   const planLight = new THREE.PointLight(0x9df0ff, 0, 3, 2);
   planLight.position.y = .3;
   planchette.add(planLight);
@@ -227,11 +236,12 @@
     m.position.set((idx - (total - 1) / 2) * spread, TABLE_Y + 1.15, -.1);
     S.add(m);
     letterMeshes.push(m);
+    m.userData.baseY = TABLE_Y + 1.15;
     Kit.tween(.7, t => {
       m.material.opacity = t;
       m.position.y = TABLE_Y + .5 + t * .65;
       m.scale.setScalar(.5 + t * .5);
-    }, 'outCubic');
+    }, 'outCubic').then(() => { m.userData.live = true; });
     return m;
   }
 
@@ -247,7 +257,12 @@
       c.flame.position.x = Math.sin(tt * 6 + i) * .012;
     });
     overhead.intensity = 10 + Math.sin(tt * 2.7) * 1.6;
-    letterMeshes.forEach((m, i) => { m.position.y += Math.sin(tt * 2 + i) * .0006; });
+    letterMeshes.forEach((m, i) => {
+      if (!m.userData.live) return;
+      m.position.y = m.userData.baseY + Math.sin(tt * 1.8 + i * .9) * .035;
+      m.rotation.z = Math.sin(tt * 1.3 + i) * .05;
+      m.material.opacity = .82 + Math.sin(tt * 9 + i * 2.3) * .09 + Math.sin(tt * 23 + i) * .06;
+    });
     if (idling) {
       planchette.position.x = Math.sin(tt * .5) * .12;
       planchette.position.z = .35 + Math.cos(tt * .43) * .1;
@@ -265,7 +280,7 @@
     planchette.position.set(0, TABLE_Y + .12, .35);
     planchette.rotation.set(0, 0, 0);
     planLight.intensity = 0;
-    overhead.intensity = 10;
+    overhead.intensity = 10; overhead.color.set(0xffb670);
     idling = true;
   }
 
@@ -278,13 +293,11 @@
     const chars = winner.toUpperCase().split('').filter(ch => spots[ch]);
     const seq = chars.length ? chars : ['?'];
 
-    st.look([1.5, 3.5, 4.2], [0, TABLE_Y + .15, -.1]);
+    const cam = Kit.chase(st, { rate: 2.2 });
+    cam.to([0, 3.3, 3.7], [0, TABLE_Y + .2, -.1]);
     api.caption('Is anybody there?');
     SFX.ghost(2.4);
-    await Kit.tween(1.6, t => {
-      st.look([1.5 - t * 1.5, 3.5 - t * .2, 4.2 - t * .5], [0, TABLE_Y + .2, -.1]);
-      overhead.intensity = 10 - t * 6;
-    }, 'inOutQuad');
+    await Kit.tween(1.6, t => { overhead.intensity = 10 - t * 6; }, 'inOutQuad');
 
     // spirit arrives
     api.caption('Something is here.');
@@ -306,11 +319,11 @@
       SFX.creak(dur * .9);
       await Kit.tween(dur, t => {
         const e = Kit.ease.inOutCubic(t);
-        planchette.position.lerpVectors(from, target, e);
+        planchette.position.lerpVectors(from, target.clone().add(LENS_OFFSET), e);
         planchette.position.y = TABLE_Y + .12 + Math.sin(t * Math.PI) * .04;
         planchette.rotation.y = Math.atan2(dir.x, dir.z) * Math.sin(t * Math.PI) * .35;
         planchette.rotation.z = Math.sin(t * Math.PI * 2) * .04;
-        st.look([Math.sin(i * .7) * .75, 3.3, 3.75], [planchette.position.x * .22, TABLE_Y + .28, planchette.position.z * .22 - .15]);
+        cam.to([planchette.position.x * .3, 3.3, 3.75], [planchette.position.x * .22, TABLE_Y + .28, planchette.position.z * .22 - .15], 2.2);
       }, 'linear');
       // land on the letter
       SFX.ding(680 + i * 60);
@@ -329,7 +342,7 @@
       planchette.rotation.y += .28;
       planchette.position.y = TABLE_Y + .12 + Math.sin(t * Math.PI) * .35;
       planLight.intensity = 4 + Math.sin(t * 22) * 4;
-      st.look([0, 3.35 - t * .1, 3.8 - t * .2], [0, TABLE_Y + .7, -.15]);
+      cam.to([0, 3.3, 3.8], [0, TABLE_Y + .7, -.15]);
     }, 'linear');
 
     SFX.whoosh(.7, .35);
@@ -343,24 +356,28 @@
       }, i * 130);
     });
     st.shake(.12, .9);
-    Kit.tween(.8, t => { overhead.intensity = 4 * (1 - t); planLight.intensity = 4 * (1 - t); }, 'outQuad');
+    const warm = overhead.color.clone(), moon = new THREE.Color(0x7a8cff);
+    Kit.tween(.8, t => {
+      overhead.intensity = 4 - t * 1.6; overhead.color.lerpColors(warm, moon, t);
+      planLight.intensity = 4 - t * 2.6;
+    }, 'outQuad');
 
     // the name burns
+    cam.to([0, TABLE_Y + 1.85, 3.6], [0, TABLE_Y + 1.15, -.1], 2.4);
     await Kit.tween(1.2, t => {
-      letterMeshes.forEach((m, i) => {
-        m.material.opacity = 1;
+      letterMeshes.forEach(m => {
         m.scale.setScalar(1 + t * .55);
-        m.position.y = TABLE_Y + 1.15 + t * .28;
+        m.userData.baseY = TABLE_Y + 1.15 + t * .28;
       });
-      st.look([0, TABLE_Y + 1.55, 3.6 - t * .5], [0, TABLE_Y + 1.4, -.1]);
     }, 'outCubic');
     SFX.ghost(1.6);
-    await Kit.wait(700);
+    cam.stop();
   }
 
   Picker.init({
     key: 'seance',
     kicker: 'Spelled out by the beyond',
+    stinger: () => { SFX.ghost(1.4); SFX.ding(392); },
     tagline: 'Hands on the planchette. The spirits always answer.',
     goLabel: 'Contact the other side',
     againLabel: 'Ask again',

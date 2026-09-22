@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Alien Abduction</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -247,9 +248,11 @@
   shipGlow.position.y = -1;
   ufo.add(shipGlow);
 
+  // Normal blending, not additive: additive light on a white cow saturates to
+  // a white blob, and the cow being taken is the whole point of the shot.
   const beamMat = new THREE.MeshBasicMaterial({
-    color: 0x8dfbe0, transparent: true, opacity: 0, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, depthWrite: false
+    color: 0x5fe8c8, transparent: true, opacity: 0, side: THREE.DoubleSide,
+    blending: THREE.NormalBlending, depthWrite: false
   });
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, 5.2, 1, 40, 1, true), beamMat);
   S.add(beam);
@@ -355,13 +358,13 @@
     wantAim.set(target.position.x, 3.4, target.position.z);
     aimCam();
     await Kit.tween(.6, t => {
-      beamMat.opacity = .46 + t * .1;
+      beamMat.opacity = .3 + t * .06;
       beamR = 2.6 + t * .5;
     }, 'outQuad');
 
     // up she goes
     api.caption('Cow acquired.');
-    SFX.meow(.45);
+    SFX.moo(1.35);                       // a panicked, rising moo
     SFX.tone({ freq: 150, to: 105, dur: 1.1, type: 'sawtooth', gain: .16, filter: 'lowpass', filterFreq: 500 });
     target.userData.taken = true;
     const start = target.position.clone();
@@ -375,7 +378,7 @@
       target.rotation.y = cowSpin + t * 11;
       target.rotation.z = Math.sin(t * 7) * .5 * t;
       target.rotation.x = Math.sin(t * 5) * .35 * t;
-      beamMat.opacity = .5 - t * .08;
+      beamMat.opacity = .32 - t * .06;
       beamR = 2.6 + Math.sin(t * 9) * .25;
       wantPos.set(target.position.x + 4.6, 2.4 + h * .8, target.position.z + 7.6);
       wantAim.set(target.position.x, 1.4 + h * .92, target.position.z);
@@ -389,7 +392,7 @@
     target.visible = false;
     Kit.puffs(st, { origin: ufo.position.clone().setY(ufo.position.y - 1.4), count: 26, color: 0x8dfbe0, speed: 5, sizeMin: .5, sizeMax: 2.2, life: 1.2, gravity: 0 });
     st.shake(.28, .9);
-    await Kit.tween(.5, t => { beamMat.opacity = .36 * (1 - t); }, 'outQuad');
+    await Kit.tween(.5, t => { beamMat.opacity = .26 * (1 - t); }, 'outQuad');
 
     // the sign flutters back down
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .75),
@@ -405,7 +408,10 @@
     }, 'inCubic').then(() => hum.stop(.4));
     SFX.whoosh(1.4, .25);
 
-    const landing = new THREE.Vector3(target.position.x * .55, .14, target.position.z * .55 + 2.2);
+    // Land in front of the whole herd, so no other cow can stand between the
+    // camera and the sign (one did, and filled the final frame).
+    const frontZ = Math.max(...cows.map(c => c.position.z));
+    const landing = new THREE.Vector3(Math.max(-4, Math.min(4, target.position.x * .3)), .14, frontZ + 3.2);
     const signStart = sign.position.clone();
     await Kit.tween(2.6, t => {
       sign.position.x = signStart.x + (landing.x - signStart.x) * Kit.ease.outQuad(t);
@@ -433,6 +439,7 @@
   Picker.init({
     key: 'alien-abduction',
     kicker: 'Taken by the mothership',
+    stinger: () => SFX.theremin(),
     tagline: 'Your colleagues are cows. The saucer only has room for one.',
     goLabel: 'Send the saucer',
     againLabel: 'Abduct another',

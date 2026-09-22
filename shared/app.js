@@ -23,6 +23,10 @@ window.Picker = (function () {
     root.style.setProperty('--accent', opts.accent || meta.accent || '#ff2e6d');
     root.style.setProperty('--accent2', opts.accent2 || meta.accent2 || '#00e5ff');
     document.title = title + ' — Crazy Pickers';
+    // compile every shader while the loading screen is still up
+    try { Kit.prewarm(null, opts.prewarm); } catch (e) { console.error(e); }
+    const boot = document.querySelector('.boot');
+    if (boot) setTimeout(() => { boot.classList.add('gone'); setTimeout(() => boot.remove(), 500); }, 80);
 
     /* --- top bar --- */
     const bar = el('div', 'topbar');
@@ -55,7 +59,7 @@ window.Picker = (function () {
         <button class="btn" id="btnAgain">${opts.againLabel || 'Again'}</button>
         <a class="btn ghost" href="../index.html">Other pickers</a>
       </div>
-      <p class="peekhint">Esc or click outside to look at the scene</p>`;
+      <p class="peekhint">Esc hides this</p>`;
     root.appendChild(win);
     const peekback = el('button', 'btn ghost peekback', 'Show result');
     root.appendChild(peekback);
@@ -154,6 +158,8 @@ window.Picker = (function () {
       Roster.commit(winner);           // only now does the pick count
       syncRemaining();
       api.caption(null);
+      // let the payoff shot land before anything covers it
+      await wait(opts.hold ?? 1100);
       win.querySelector('.name').textContent = winner;
       const v = typeof opts.verdict === 'function' ? opts.verdict(winner) : (opts.verdict || '');
       win.querySelector('.verdict').textContent = v;
@@ -162,7 +168,7 @@ window.Picker = (function () {
       win.querySelector('.name').style.animation = '';
       hasResult = true;
       showCard();
-      SFX.fanfare();
+      try { (opts.stinger || SFX.fanfare)(); } catch (e) { SFX.fanfare(); }
       running = false;
     }
 

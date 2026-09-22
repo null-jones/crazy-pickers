@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Hairball Roulette</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -331,9 +332,10 @@
       const k = Math.sin(t * Math.PI);
       catBody.scale.set(1 + k * .16 * amp, 1 - k * .22 * amp, 1 + k * .16 * amp);
       catBody.position.z = k * .18 * amp;
-      head.rotation.x = k * .95 * amp;
-      head.position.y = 1.62 - k * .3 * amp;
-      head.position.z = .18 + k * .3 * amp;
+      // thrust forward rather than nod down, so the mouth stays toward camera
+      head.rotation.x = k * .5 * amp;
+      head.position.y = 1.62 - k * .2 * amp;
+      head.position.z = .18 + k * .42 * amp;
       mouth.scale.setScalar(.01 + k * (.7 + i * .22));
     }, 'inOutQuad');
     await Kit.tween(.26, t => {
@@ -367,6 +369,7 @@
     SFX.meow(1.15);
     await Kit.wait(420);
 
+    cam.to([1.55, 1.3, 3.5], [0, 1.2, .5], 2.4);
     api.caption('OH NO');
     for (let i = 0; i < 4; i++) {
       await heave(i, api);
@@ -378,17 +381,19 @@
     SFX.retch(4);
     await Kit.tween(.22, t => {
       catBody.scale.set(1 + t * .3, 1 - t * .34, 1 + t * .3);
-      head.rotation.x = t * 1.5;
-      head.position.z = .18 + t * .45;
-      head.position.y = 1.62 - t * .42;
-      mouth.scale.setScalar(.01 + t * 1.25);
+      head.rotation.x = t * .38;
+      head.position.z = .18 + t * .62;
+      head.position.y = 1.62 - t * .3;
+      mouth.scale.setScalar(.01 + t * 1.45);
     }, 'inQuad');
 
     SFX.squelch(.6);
     SFX.splat(.35);
     st.shake(.2, .88);
 
-    const origin = new THREE.Vector3(0, 1.18, .95);
+    // launch from where the mouth actually is, not a guessed point
+    catBody.updateMatrixWorld(true);
+    const origin = mouth.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -.02, .18));
     hairball.position.copy(origin);
     hairball.scale.setScalar(.4);
     hairball.visible = true;
@@ -456,6 +461,7 @@
   Picker.init({
     key: 'cat-vomit',
     kicker: 'Coughed up by the cat',
+    stinger: () => { SFX.meow(1.2); setTimeout(() => SFX.boing(), 380); },
     tagline: 'The office cat has eaten the roster. Biology takes it from here.',
     goLabel: 'Feed the cat',
     againLabel: 'Again, cat',

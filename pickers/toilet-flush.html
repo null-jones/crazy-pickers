@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Toilet of Destiny</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -84,8 +85,9 @@
   const toilet = new THREE.Group();
   S.add(toilet);
 
-  const pedestal = Kit.cyl(1.15, 1.5, 1.5, 0xfbfdff, 28, PORC);
-  pedestal.position.y = .75;
+  // top must sit below the waterline, or it covers the floating names
+  const pedestal = Kit.cyl(1.15, 1.5, 1.25, 0xfbfdff, 28, PORC);
+  pedestal.position.y = .625;
   toilet.add(pedestal);
 
   const BOWL_R = 1.72, RIM_Y = 2.0;
@@ -150,6 +152,8 @@
   plungerCup.position.set(3.1, .38, -1.4);
   S.add(plungerCup);
 
+  const dropletMat = new THREE.MeshStandardMaterial({ color: 0x8fdcf0, roughness: .05, metalness: .2, transparent: true, opacity: .85 });
+
   /* ---------- water ---------- */
   const WATER_Y = RIM_Y - .62;
   const waterMat = new THREE.MeshStandardMaterial({
@@ -212,7 +216,7 @@
     water.rotation.y += spin * dt * 1.6;
     vortex.rotation.y -= spin * dt * 2.4;
     scraps.forEach((s, i) => {
-      if (s.gone) return;
+      if (s.gone || s.manual) return;
       s.angle += spin * dt * (1 + s.radius * .1);
       const wob = Math.sin(tt * 2.2 + i) * .02;
       s.mesh.position.set(Math.cos(s.angle) * s.radius, s.y + wob - s.sink, Math.sin(s.angle) * s.radius);
@@ -220,7 +224,7 @@
       s.mesh.rotation.z = Math.sin(tt * 2 + i) * .12 + Math.min(.9, spin * .06);
       s.mesh.rotation.x = Math.cos(tt * 1.7 + i) * .1;
     });
-    if (idling) st.look([Math.sin(tt * .18) * 2.4, 6.0, 5.6], [0, 1.9, 0]);
+    if (idling) st.look([Math.sin(tt * .18) * 1.6, 5.2, 4.3], [0, 1.85, 0]);   // close enough to read the scraps
     return true;
   });
 
@@ -249,8 +253,9 @@
     const champ = scraps.find(s => s.name === winner) || scraps[0];
 
     api.caption('Everyone into the bowl.');
+    const p0 = st.rig.position.clone();          // start from wherever the idle orbit is
     await Kit.tween(1.2, t => {
-      st.look([2.4 - t * 2.4, 6.0 - t * .7, 5.6 - t * 1.5], [0, 1.9 + t * .02, 0]);
+      st.look([p0.x * (1 - t), p0.y + (5.3 - p0.y) * t, p0.z + (4.1 - p0.z) * t], [0, 1.85 + t * .1, 0]);
     }, 'inOutQuad');
 
     // FLUSH
@@ -300,20 +305,46 @@
       vortex.material.opacity = .85 * (1 - t);
       water.position.y = WATER_Y - .23 - t * .04;
     }, 'outQuad');
-    await Kit.tween(2.0, t => {
-      champ.radius = BOWL_R * .58 * (1 - t) + .02;
-      champ.y = WATER_Y + .26 + t * .5;
-      st.look([0, 4.9 - t * .6, 3.4 - t * .9], [0, 2.0 + t * .25, 0]);
+    const startR = champ.radius;
+    await Kit.tween(1.6, t => {
+      champ.radius = startR * (1 - t) + .02;
+      champ.y = WATER_Y + .26 + t * .2;
+      st.look([0, 4.9 - t * .3, 3.4 + t * .6], [0, 2.0 + t * .35, 0]);
     }, 'outCubic');
-    SFX.ding(920);
+
+    // it rises out of the bowl, turns to face you, and hangs there dripping
+    champ.manual = true;
     SFX.splash();
-    Kit.puffs(st, { origin: new THREE.Vector3(0, WATER_Y + .5, 0), count: 16, color: 0x9fe8ff, speed: 2.2, sizeMin: .2, sizeMax: .6, life: 1.1, gravity: -1.2 });
-    await Kit.wait(750);
+    SFX.tone({ freq: 300, to: 900, dur: .6, type: 'sine', gain: .12 });
+    Kit.burst(st, {
+      origin: new THREE.Vector3(0, WATER_Y + .1, 0), count: 36, size: .07, speed: 3.6, gravity: -9, life: 1.2, jitter: .35,
+      dir: new THREE.Vector3(0, 1, 0), spread: 1.1, material: dropletMat
+    });
+    const m = champ.mesh, q0 = m.quaternion.clone(), p1 = m.position.clone();
+    const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.12, 0, 0));
+    const hover = new THREE.Vector3(0, 3.2, 1.25);
+    await Kit.tween(1.3, t => {
+      m.position.lerpVectors(p1, hover, t);
+      m.position.y += Math.sin(t * Math.PI) * .25;
+      m.quaternion.slerpQuaternions(q0, q1, t);
+      m.scale.setScalar(1 + t * 1.35);
+      st.look([0, 4.6 - t * .8, 4.0 + t * .6], [0, 2.35 + t * .8, t * 1.25]);
+    }, 'outBack');
+    st.add(() => {                               // gentle bob while the result is up
+      if (!m.parent) return false;
+      m.position.y = hover.y + Math.sin(performance.now() / 420) * .04;
+      return true;
+    });
+    SFX.ding(920);
+    Kit.puffs(st, { origin: hover.clone().add(new THREE.Vector3(0, -.45, 0)), count: 10, color: 0x9fe8ff, speed: .6, sizeMin: .08, sizeMax: .2, life: 1.2, gravity: -3, additive: false, opacity: .8 });
+    await Kit.wait(400);
   }
 
   Picker.init({
     key: 'toilet-flush',
     kicker: 'Did not go down',
+    stinger: () => SFX.bubbleUp(),
+    prewarm: [dropletMat],
     tagline: 'Whoever is still floating when the water settles has the floor.',
     goLabel: 'Pull the handle',
     againLabel: 'Flush again',

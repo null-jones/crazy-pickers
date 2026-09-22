@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QA harness — Crazy Pickers</title>
+<style>
+  body{margin:0;background:#101118;color:#e8eaf4;font:14px/1.5 system-ui;padding:20px}
+  h1{font-size:18px;margin:0 0 6px}
+  p{margin:0 0 12px;color:#9aa0bb}
+  button{font:600 13px system-ui;padding:8px 14px;border-radius:8px;border:0;background:#2a2d40;color:#fff;cursor:pointer;margin:0 6px 6px 0}
+  button.primary{background:#ff2e6d;color:#111}
+  table{border-collapse:collapse;margin:14px 0;font-size:13px}
+  td,th{border-bottom:1px solid #262838;padding:6px 12px;text-align:left}
+  .bad{color:#ff7a7a}.ok{color:#8ef59b}
+  #stageWrap{width:640px;height:360px;overflow:hidden;border:1px solid #333;position:relative}
+  #stageWrap iframe{width:1280px;height:720px;border:0;transform:scale(.5);transform-origin:0 0;background:#000}
+  #sheet{max-width:100%;display:block;margin-top:12px;border:1px solid #333}
+</style>
+</head>
+<body>
+<h1>QA harness</h1>
+<p>Runs each picker at 1280×720 with a throwaway roster, grabs a frame every second from GO until the result banner,
+  and reports console errors, run length and the worst frame hitch. Needs <code>python3 serve.py</code>; contact sheets
+  land in <code>qa/</code> (git-ignored). Add <code>?shim=1</code> if the page is in a background tab or an embedded pane that
+  throttles <code>requestAnimationFrame</code>. <code>?only=car-crash,foul-ball</code> limits the run; <code>?names=20</code> uses twenty names.</p>
+<div id="buttons"></div>
+<table id="results"><tr><th>picker</th><th>result</th><th>winner</th><th>run</th><th>worst hitch</th><th>draw calls</th><th>errors</th></tr></table>
+<div id="stageWrap"></div>
+<img id="sheet" alt="">
+
+<script src="../shared/pickers.js"></script>
+<script>
+(function () {
+  const Q = new URLSearchParams(location.search);
+  const SHIM = Q.get('shim') === '1';
+  const N = +(Q.get('names') || 8);
+  const NAMES = ['Ellie', 'Alex', 'Priya', 'Sam', 'Jordan', 'Nadia', 'Tom', 'Mika', 'Ada', 'Grace', 'Linus', 'Alan',
+                 'Radia', 'Ken', 'Barbara', 'Tim', 'Vint', 'Guido', 'Bjarne', 'Yukihiro'].slice(0, N);
+  const ONLY = (Q.get('only') || '').split(',').filter(Boolean);
+  const list = PICKERS.filter(p => !ONLY.length || ONLY.includes(p.key));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  async function loadPicker(key) {
+    const wrap = document.getElementById('stageWrap');
+    wrap.innerHTML = '';
+    const ifr = document.createElement('iframe');
+    wrap.appendChild(ifr);
+    const html = await (await fetch('../pickers/' + key + '.html')).text();
+    const pre = '<base href="../pickers/"><script>window.__qa={names:' + JSON.stringify(NAMES) + '};' +
+      'window.__qaErrors=[];addEventListener("error",e=>__qaErrors.push(e.message));' +
+      '(function(){const o=console.error;console.error=function(...a){__qaErrors.push(String(a[0]&&a[0].message||a[0]));o.apply(console,a)}})();' +
+      (SHIM ? 'window.requestAnimationFrame=cb=>setTimeout(()=>cb(performance.now()),16);' : '') + '<\/script>';
+    ifr.srcdoc = html.replace('<head>', '<head>' + pre);
+    await new Promise(r => ifr.onload = r);
+    const w = ifr.contentWindow;
+    const t0 = performance.now();
+    while (!(w.__stage && w.document.getElementById('btnGo')) && performance.now() - t0 < 15000) await wait(100);
+    return { ifr, w, doc: w.document };
+  }
+
+  async function runOne(p) {
+    const { w, doc } = await loadPicker(p.key);
+    const st = w.__stage;
+    if (!st) return { key: p.key, fail: 'no stage' };
+    await wait(1500);                                   // let the idle shot settle
+    const FW = 320, FH = 180, cols = 5, frames = [];
+    const grab = label => {
+      st.renderer.render(st.scene, st.camera);
+      const c = document.createElement('canvas'); c.width = FW; c.height = FH;
+      const x = c.getContext('2d'); x.drawImage(st.renderer.domElement, 0, 0, FW, FH);
+      const cap = doc.querySelector('.caption.show'), win = doc.querySelector('.winner.show');
+      x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(0, 0, FW, 16);
+      x.fillStyle = '#ff0'; x.font = 'bold 11px system-ui'; x.fillText(label, 4, 12);
+      if (cap) { x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(0, FH - 16, FW, 16); x.fillStyle = '#fff'; x.fillText(cap.textContent, 4, FH - 4); }
+      if (win) { x.fillStyle = 'rgba(3,4,10,.8)'; x.fillRect(0, FH * .7, FW, FH * .3); x.fillStyle = '#fff'; x.font = 'bold 22px Impact,sans-serif'; x.textAlign = 'center'; x.fillText(win.querySelector('.name').textContent.toUpperCase(), FW / 2, FH * .9); x.textAlign = 'left'; }
+      frames.push(c);
+    };
+    let last = w.performance.now(), worst = 0, worstAt = 0, t0;
+    st.add(() => { const n = w.performance.now(); if (t0 && n - last > worst) { worst = n - last; worstAt = n - t0; } last = n; return true; });
+    grab('idle');
+    t0 = w.performance.now(); last = t0;
+    doc.getElementById('btnGo').click();
+    let i = 1, done = false;
+    while (!done && i < 24) {
+      while (w.performance.now() - t0 < i * 1000) await wait(20);
+      done = !!doc.querySelector('.winner.show');
+      grab((i) + 's' + (done ? ' · result' : ''));
+      i++;
+    }
+    const secs = (w.performance.now() - t0) / 1000;
+    const rows = Math.ceil(frames.length / cols);
+    const sheet = document.createElement('canvas'); sheet.width = FW * cols; sheet.height = FH * rows;
+    const sx = sheet.getContext('2d'); sx.fillStyle = '#000'; sx.fillRect(0, 0, sheet.width, sheet.height);
+    frames.forEach((f, k) => sx.drawImage(f, (k % cols) * FW, Math.floor(k / cols) * FH));
+    const blob = await new Promise(r => sheet.toBlob(r, 'image/jpeg', .85));
+    const saved = await fetch('/__save?dir=qa&name=' + p.key + '.jpg', { method: 'POST', body: blob }).then(r => r.ok).catch(() => false);
+    document.getElementById('sheet').src = URL.createObjectURL(blob);
+    return {
+      key: p.key, done, winner: done ? doc.querySelector('.winner .name').textContent : '',
+      secs: +secs.toFixed(1), worst: Math.round(worst) + 'ms @' + (worstAt / 1000).toFixed(1) + 's',
+      calls: st.renderer.info.render.calls, errors: w.__qaErrors.slice(0, 5), saved
+    };
+  }
+
+  const results = [];
+  function row(r) {
+    const tr = document.createElement('tr');
+    const ok = r.done && !r.errors.length;
+    tr.innerHTML = `<td>${r.key}</td><td class="${ok ? 'ok' : 'bad'}">${r.fail || (ok ? 'ok' : r.done ? 'errors' : 'did not finish')}</td>` +
+      `<td>${r.winner || ''}</td><td>${r.secs ?? ''}s</td><td>${r.worst || ''}</td><td>${r.calls ?? ''}</td><td class="bad">${(r.errors || []).join('<br>')}</td>`;
+    document.getElementById('results').appendChild(tr);
+  }
+  async function runAll(which) {
+    for (const p of which) { const r = await runOne(p); results.push(r); row(r); }
+    await fetch('/__save?dir=qa&name=summary.json', { method: 'POST', body: JSON.stringify(results, null, 2) }).catch(() => {});
+    window.__qaDone = results;
+  }
+
+  const btns = document.getElementById('buttons');
+  const all = document.createElement('button'); all.className = 'primary'; all.textContent = 'Run all'; all.onclick = () => runAll(list); btns.appendChild(all);
+  list.forEach(p => { const b = document.createElement('button'); b.textContent = p.key; b.onclick = () => runAll([p]); btns.appendChild(b); });
+  if (Q.get('auto') === '1') runAll(list);
+})();
+</script>
+</body>
+</html>

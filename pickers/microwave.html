@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Microwave Meltdown</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -184,10 +185,10 @@
       end.position.x = sx * .5;
       g.add(end);
     });
-    const tag = new THREE.Mesh(new THREE.PlaneGeometry(.72, .36),
+    const tag = new THREE.Mesh(new THREE.PlaneGeometry(.98, .49),
       new THREE.MeshStandardMaterial({ map: tagTexture(name), roughness: .8, side: THREE.DoubleSide }));
-    tag.position.set(0, .3, 0);
-    tag.rotation.x = -.5;
+    tag.position.set(0, .36, 0);
+    tag.rotation.x = -.62;
     g.add(tag);
     g.userData = { name, tag };
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
@@ -221,14 +222,18 @@
   buildBurritos();
 
   /* ---------- sparks ---------- */
+  // Two spark lights made up front and reused. Creating a light per spark
+  // changed the light count on every zap, which recompiles every shader.
+  const sparkLights = [0, 1].map(() => { const l = new THREE.PointLight(0xaad8ff, 0, 5, 2); mw.add(l); return l; });
+  let sparkIdx = 0;
   function arc(at) {
     const p = new THREE.Vector3(
       -.62 + Kit.rnd(-1.1, 1.1), MW.h / 2 - .7 + Kit.rnd(0, .9), .04 + Kit.rnd(-.9, .9));
     Kit.puffs(st, { origin: p, count: 3, color: 0xbfe4ff, speed: 1.6, sizeMin: .12, sizeMax: .4, life: .35, gravity: 0 });
-    const l = new THREE.PointLight(0xaad8ff, 26, 5, 2);
+    const l = sparkLights[sparkIdx++ % sparkLights.length];
     l.position.copy(p);
-    mw.add(l);
-    setTimeout(() => mw.remove(l), 90);
+    l.intensity = 26;
+    setTimeout(() => { l.intensity = 0; }, 90);
     SFX.zap();
   }
 
@@ -258,11 +263,15 @@
     buildBurritos(winner);
     const chosen = burritos.find(b => b.userData.name === winner) || burritos[0];
 
-    st.look([2.8, 2.5, 8.0], [-.3, 1.35, 0]);
+    // a close look through the open door while the plate turns, so everyone
+    // can find their own name before it all goes wrong
+    const cam = Kit.chase(st, { rate: 2.2 });
     api.caption('Everyone in, then.');
-    await Kit.tween(1.3, t => {
-      st.look([2.8 - t * 2.4, 2.5 - t * .55, 8.0 - t * 1.6], [-.5, 1.4, 0]);
-    }, 'inOutQuad');
+    spinning = true;
+    cam.to([-.35, 2.35, 3.5], [-.6, 1.05, .1]);
+    await Kit.wait(2300);
+    cam.to([.4, 2.0, 5.6], [-.5, 1.4, 0], 2.4);
+    await Kit.wait(500);
 
     // shut the door, set the timer
     SFX.noise({ dur: .3, freq: 700, to: 200, gain: .18 });
@@ -299,7 +308,7 @@
     // One smooth push-in over the whole countdown. Driving the camera off the
     // loop index made it hop to a new spot on every tick.
     Kit.tween(4.3, t => {
-      st.look([.7 - t * 1.1, 1.8 + t * .25, 6.5 - t * 2.1], [-.6, 1.4 + t * .05, 0]);
+      cam.to([.7 - t * 1.1, 1.8 + t * .25, 6.5 - t * 2.1], [-.6, 1.4 + t * .05, 0]);
     }, 'inOutQuad');
     for (let i = 0; i < secs.length; i++) {
       displayKit.draw(secs[i]);
@@ -328,7 +337,8 @@
     });
 
     // door blows open, everything inside is gone
-    Kit.tween(.35, t => { door.rotation.y = -Kit.ease.outBack(t) * 1.9; }, 'linear');
+    // past ~90° the door swings back across the lens and hides the blast
+    Kit.tween(.35, t => { door.rotation.y = -Kit.ease.outBack(t) * 1.35; }, 'linear');
     burritos.forEach(b => { if (b !== chosen) b.visible = false; });
     chosen.visible = false;
     spinning = false;
@@ -353,7 +363,7 @@
       card.rotation.x = -Math.PI / 2 * Kit.ease.outCubic(t) + Math.sin(t * 11) * .8 * (1 - t);
       card.rotation.z = Math.sin(t * 8) * .9 * (1 - t);
       card.rotation.y = Math.sin(t * 6) * .5 * (1 - t);
-      st.look([-.4 + t * 1.1, 2.05 - t * .55, 4.4 + t * .5], [card.position.x * .6, card.position.y * .6 + .3, card.position.z * .6]);
+      cam.to([-.4 + t * 1.1, 2.05 - t * .55, 4.4 + t * .5], [card.position.x * .6, card.position.y * .6 + .3, card.position.z * .6]);
     }, 'linear');
     card.rotation.set(-Math.PI / 2, 0, Kit.rnd(-.25, .25));
     card.position.copy(landing);
@@ -361,14 +371,16 @@
     SFX.sizzle(1.2);
 
     await Kit.tween(1.2, t => {
-      st.look([.7 - t * .3, 1.5 - t * .35, 4.9 - t * 1.3], [landing.x, .12, landing.z]);
+      cam.to([.7 - t * .3, 1.5 - t * .35, 4.9 - t * 1.3], [landing.x, .12, landing.z]);
     }, 'inOutQuad');
-    await Kit.wait(650);
+    await Kit.wait(300);
+    cam.stop();
   }
 
   Picker.init({
     key: 'microwave',
     kicker: 'Pulled from the wreckage',
+    stinger: () => SFX.microwaveDone(),
     tagline: 'Twelve seconds on full power. Whatever is still legible speaks first.',
     goLabel: 'Press start',
     againLabel: 'Do it again',

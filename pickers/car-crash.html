@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Crash Test Standup</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -418,8 +419,8 @@
     engine.node.frequency.setTargetAtTime(150, SFX.ctx().currentTime, .25);
     engine.vol(.16);
     api.caption('No brakes. No survivors. No volunteers.');
-    const revFrom = [START_X + 3.4, 1.75, 4.6], revTo = [START_X - 13, 3.1, 13.5];
-    const aimFrom = [START_X + 2.5, .9, 0], aimTo = [START_X + 4, 1.7, 0];
+    const revFrom = [START_X + 3.4, 1.75, 4.6], revTo = [START_X - 8, 2.2, 9.5];
+    const aimFrom = [START_X + 2.5, .9, 0], aimTo = [START_X + 4, 1.4, 0];
     await Kit.tween(.75, t => {
       st.look(revFrom.map((v, i) => v + (revTo[i] - v) * t),
               aimFrom.map((v, i) => v + (aimTo[i] - v) * t));
@@ -439,7 +440,8 @@
       car.position.y = Math.sin(raw * 26) * .03;
       car.rotation.z = Math.sin(raw * 19) * .012;
       // chase camera swinging round to a side-on impact view
-      st.look([car.position.x - 13 + t * 5, 3.1 + t * 1.9, 13.5 - t * 1.5], [car.position.x + 4, 1.7, 0]);
+      // tighter than before so the car fills the frame; ends exactly where the impact shot starts
+      st.look([car.position.x - 8, 2.2 + t * 2.8, 9.5 + t * 2.5], [car.position.x + 4, 1.4 + t * .3, 0]);
     }, 'inQuad');
 
     /* 4. ★ IMPACT ★ */
@@ -504,13 +506,19 @@
       st.look([crashX - 8 + t * 3, 5.0 - t * .5, 12 - t * 1.5], [crashX + 4 - t * 3.4, 1.7 + t * .2, 0]);
     }, 'outQuart');
 
+    // Tumble end over end toward the lens, fast at first and settling face-on.
+    // The old spin about the vertical axis spent its slow part edge-on, a white
+    // slab across the middle of the frame.
+    const p0 = plate.position.clone(), q0 = plate.quaternion.clone(), qFace = new THREE.Quaternion();
+    const flip = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0), dest = new THREE.Vector3(0, 0, -1.55);
     await Kit.tween(2.0, t => {
-      plate.position.lerpVectors(plate.position, new THREE.Vector3(0, 0, -1.55), Math.min(1, t * .16 + .02));
-      plate.rotation.x = (1 - t) * 9 * Math.sin(t * 3.4);
-      plate.rotation.y = Math.PI / 2 * (1 - Kit.ease.outCubic(t)) + t * 6.3 * (1 - t);
-      plate.rotation.z = (1 - t) * 4;
-      plate.scale.setScalar(1 + t * .18);
-    }, 'outQuad');
+      const e = Kit.ease.outCubic(t);
+      plate.position.lerpVectors(p0, dest, e);
+      plate.quaternion.slerpQuaternions(q0, qFace, e);
+      flip.setFromAxisAngle(X, (1 - e) * Math.PI * 4);
+      plate.quaternion.multiply(flip);
+      plate.scale.setScalar(1 + e * .18);
+    }, 'linear');
 
     await Kit.tween(.5, t => {
       plate.position.set(0, 0, -1.55);
@@ -518,12 +526,13 @@
       plate.scale.setScalar(1.18 + t * .05);
     }, 'outBack');
     SFX.ding(880);
-    await Kit.wait(700);
+    await Kit.wait(300);
   }
 
   Picker.init({
     key: 'car-crash',
     kicker: 'Sole survivor of the collision',
+    stinger: () => SFX.sadTrombone(),
     tagline: 'Whoever’s number plate we scrape off the tarmac talks first.',
     goLabel: 'Floor it',
     againLabel: 'Wreck another',

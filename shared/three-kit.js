@@ -135,8 +135,40 @@ window.Kit = (function () {
       },
       dispose() { running = false; }
     };
-    if (/[?&]debug/.test(location.search)) window.__stage = api;   // console handle, ?debug=1
+    lastStage = api;
+    if (/[?&]debug/.test(location.search) || window.__qa) window.__stage = api;   // console handle: ?debug=1, or tools/qa.html
     return api;
+  }
+
+  /**
+   * Compile every shader the scene will need *now*, while the loading screen is
+   * up, instead of mid-animation. Adding a light or a new material variant
+   * during a run forces a recompile of everything: that was a ~1s freeze at the
+   * volcano's eruption. Scenes pass any materials they only create later, and
+   * must create their runtime lights up front (intensity 0) for the same reason.
+   */
+  let lastStage = null;
+  function prewarm(st, extra) {
+    const THREE = T();
+    st = st || lastStage;
+    if (!st) return;
+    const geo = new THREE.BoxGeometry(.001, .001, .001), tmp = [];
+    const stock = [
+      new THREE.SpriteMaterial({ map: softSprite(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+      new THREE.SpriteMaterial({ map: softSprite(), transparent: true, depthWrite: false }),
+      new THREE.MeshStandardMaterial({ transparent: true, opacity: .8 }),
+      new THREE.MeshStandardMaterial({ flatShading: true }),
+      new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
+    ];
+    stock.concat(extra || []).forEach(m => {
+      const variants = m.isSpriteMaterial ? [new THREE.Sprite(m)]
+        : [new THREE.Mesh(geo, m), new THREE.InstancedMesh(geo, m, 1)];   // bursts are instanced: a separate shader
+      variants.forEach(o => { o.position.set(0, -500, 0); o.frustumCulled = false; st.scene.add(o); tmp.push(o); });
+    });
+    st.renderer.compile(st.scene, st.camera);
+    st.renderer.render(st.scene, st.camera);
+    tmp.forEach(o => st.scene.remove(o));
+    stock.forEach(m => m.dispose && !m.isSpriteMaterial && m.dispose());
   }
 
   /**
@@ -278,7 +310,44 @@ window.Kit = (function () {
   }
   function softSprite() { if (!sparkTex) sparkTex = spark(); return sparkTex; }
 
+  /**
+   * A floating name label that is never smaller than `minScreen` of the
+   * viewport height, however far away the camera is, and grows normally when
+   * it gets close. This is the one thing every picker must keep readable.
+   *   const l = Kit.label(st, 'NADIA', { height: .7 }); person.add(l);
+   *   l.highlight(0xffd23f)  l.dim()  l.retire()  (fade out and remove)
+   */
+  function label(st, text, o) {
+    const THREE = T();
+    o = o || {};
+    const style = Object.assign({ w: 512, h: 190, bg: '#f7f4ea', fg: '#14121f', fill: .8, border: '#14121f', borderWidth: 12, radius: 22 }, o.style || {});
+    const tex = nameTexture(text, style);
+    const mat = new THREE.SpriteMaterial({ map: tex.texture, transparent: true, depthWrite: false, depthTest: o.depthTest ?? true });
+    const sp = new THREE.Sprite(mat);
+    sp.renderOrder = o.renderOrder ?? 10;
+    const aspect = style.w / style.h, h = o.height ?? .7, minFrac = o.minScreen ?? .042;
+    let boost = 1, dead = false;
+    const wp = new THREE.Vector3(), cp = new THREE.Vector3(), ws = new THREE.Vector3();
+    st.add(() => {
+      if (dead) return false;
+      if (!sp.parent || !sp.visible) return true;
+      sp.getWorldPosition(wp); st.camera.getWorldPosition(cp);
+      const viewH = 2 * wp.distanceTo(cp) * Math.tan(st.camera.fov * Math.PI / 360);
+      const worldH = Math.max(h * boost, minFrac * boost * viewH);
+      const parentScale = sp.parent.getWorldScale(ws).y || 1;
+      sp.scale.set(worldH * aspect / parentScale, worldH / parentScale, 1);
+      return true;
+    });
+    sp.highlight = (col = 0xffd23f, b = 1.35) => { mat.color.set(col); boost = b; };
+    sp.dim = () => { mat.color.set(0x8a8f9f); mat.opacity = .6; boost = .8; };
+    sp.retire = (dur = .5) => tween(dur, t => { mat.opacity = 1 - t; boost = 1 - t * .5; }).then(() => sp.dispose());
+    sp.setText = str => tex.draw(str);
+    sp.dispose = () => { dead = true; if (sp.parent) sp.parent.remove(sp); mat.dispose(); tex.texture.dispose(); };
+    return sp;
+  }
+
   /* ---------- particles ---------- */
+  const geoCache = {};
   /**
    * Chunky 3D debris burst using an InstancedMesh — good for crashes,
    * eruptions, explosions, splatter. Auto-updates and self-removes.
@@ -287,7 +356,8 @@ window.Kit = (function () {
     const THREE = T();
     o = o || {};
     const n = o.count || 60;
-    const geo = o.geometry || new THREE.TetrahedronGeometry(o.size || 0.16);
+    const geoKey = 'tet' + (o.size || 0.16);
+    const geo = o.geometry || (geoCache[geoKey] ||= new THREE.TetrahedronGeometry(o.size || 0.16));
     const mat = o.material || new THREE.MeshStandardMaterial({ color: o.color ?? 0xffffff, roughness: .7, metalness: o.metalness ?? .1, emissive: o.emissive ?? 0x000000, emissiveIntensity: o.emissiveIntensity ?? 1 });
     const mesh = new THREE.InstancedMesh(geo, mat, n);
     mesh.castShadow = !!o.shadows;
@@ -332,7 +402,9 @@ window.Kit = (function () {
       mesh.instanceMatrix.needsUpdate = true;
       if (age >= life) {
         st.scene.remove(mesh);
-        geo.dispose(); mat.dispose();
+        if (o.geometry) geo.dispose();          // cached default geometry is kept
+        if (!o.material) mat.dispose();         // a caller's material may be reused (and prewarmed)
+        mesh.dispose();
         return false;
       }
     });
@@ -420,7 +492,7 @@ window.Kit = (function () {
   }
 
   return {
-    stage, chase, tween, ease, wait, rnd, pickOne, nameTexture, spark, softSprite, env, gradientSky,
+    stage, chase, label, prewarm, tween, ease, wait, rnd, pickOne, nameTexture, spark, softSprite, env, gradientSky,
     burst, puffs, box, cyl, ball, clearTweens, texFromCanvas, makeCanvas, reduceMotion
   };
 })();

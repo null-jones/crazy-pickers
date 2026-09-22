@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Foul Ball</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -175,13 +176,13 @@
 
   let fans = [];
   function labelFor(name) {
-    const tex = Kit.nameTexture(name, { w: 512, h: 190, bg: '#f7f4ea', fg: '#14121f', fill: .8, border: '#14121f', borderWidth: 12, radius: 22 }).texture;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    sp.scale.set(2.1, .78, 1); sp.position.y = 2.5;
+    // readable from the wide idle shot as well as up close
+    const sp = Kit.label(st, name, { height: .78, minScreen: .03 });
+    sp.position.y = 2.5;
     return sp;
   }
   function seatFans(names) {
-    fans.forEach(f => S.remove(f.g)); fans = [];
+    fans.forEach(f => { f.label.dispose(); S.remove(f.g); }); fans = [];
     seats.forEach(s => { s.taken = false; });
     // spread them through the middle tiers where the camera can see them
     const pool = seats.filter(s => s.tier >= 1 && s.tier <= TIERS - 2 && Math.abs(s.th) < ARC * .42);
@@ -212,17 +213,30 @@
   S.add(batter.g);
   const bat = Kit.cyl(.035, .06, 1.05, 0xd9a866, 10, { roughness: .6 });
   bat.position.set(0, -.95, 0); batter.arms[1].add(bat);
-  batter.arms[1].rotation.set(-2.4, 0, -.5); batter.arms[0].rotation.set(-2.2, 0, .6);
   [pitcher, batter].forEach(p => { const cap = Kit.cyl(.19, .19, .1, 0x1f3f8a, 12, { roughness: .8 }); cap.position.y = 1.62; p.hips.add(cap); });
   const catcher = People.make({ x: 0, y: .3, z: 1.9, facing: Math.PI, shirt: 0x2b2b30, legs: 0x2b2b30, scale: 1 });
-  catcher.hips.position.y = -.42; catcher.legPivots.forEach(l => l.rotation.x = -1.5); catcher.arms.forEach(a => a.rotation.x = -1.2);
   S.add(catcher.g);
+  // All three are scripted, so they run in 'pose' mode: in 'idle' the people
+  // rig re-poses arms and legs every frame, which silently erased the wind-up,
+  // the swing and the catcher's crouch.
+  function setPoses() {
+    [pitcher, batter, catcher].forEach(p => { People.reset(p); p.mode = 'pose'; });
+    pitcher.g.rotation.y = 0;
+    batter.g.rotation.y = -Math.PI / 2 + .25;
+    batter.hips.position.y = -.06;
+    batter.legPivots[0].rotation.z = .2; batter.legPivots[1].rotation.z = -.2;
+    batter.hips.rotation.y = -.3;
+    batter.arms[1].rotation.set(-2.4, 0, -.5); batter.arms[0].rotation.set(-2.2, 0, .6);
+    catcher.hips.position.y = -.42; catcher.legPivots.forEach(l => l.rotation.x = -1.5); catcher.arms.forEach(a => a.rotation.x = -1.2);
+  }
+  setPoses();
+  let swinging = false;
 
-  const ball = Kit.ball(.19, 0xffffff, 12, { roughness: .5 });
+  const ball = Kit.ball(.26, 0xffffff, 14, { roughness: .5, emissive: 0xffffff, emissiveIntensity: .35 });   // bigger than real: it's the thing to follow
   ball.position.set(.3, 1.6, -18.0);
   S.add(ball);
   const ballGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.softSprite(), color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-  ballGlow.scale.setScalar(1.4); S.add(ballGlow);
+  ballGlow.scale.setScalar(2.4); S.add(ballGlow);
 
   /* ---------- ambience ---------- */
   let tt = 0, idling = true, murmur = null, jumboBlink = 0;
@@ -234,16 +248,16 @@
     if (idling) st.look([Math.sin(tt * .1) * 30, 14, 34 + Math.cos(tt * .1) * 6], [0, 6, -40]);
     return true;
   });
-  // the batter's arms must hold the bat, whatever idle does to them
-  st.add(() => { if (batter.mode === 'idle') { batter.arms[1].rotation.set(-2.4, 0, -.5); batter.arms[0].rotation.set(-2.2, 0, .6); } return true; });
+  // a little bat waggle while waiting for the pitch
+  st.add(() => { if (!swinging && batter.mode === 'pose') batter.arms[1].rotation.x = -2.4 + Math.sin(tt * 3.1) * .09; return true; });
 
   function resetScene() {
     Kit.clearTweens();
     seatFans(Roster.all());
     jumboKit.draw('PLAY BALL');
     ball.position.set(.3, 1.6, -18.0); ball.visible = true;
-    [pitcher, batter].forEach(People.reset);
-    pitcher.g.rotation.y = 0; batter.g.rotation.y = -Math.PI / 2 + .25;
+    swinging = false;
+    setPoses();
     idling = true;
   }
 
@@ -256,7 +270,7 @@
 
     murmur = SFX.drone({ noise: true, type: 'bandpass', freq: 900, Q: .6, gain: .07, rate: 1.2 });
     const cam = Kit.chase(st, { rate: 2.4 });
-    cam.to([2.2, 2.6, 5.2], [0, 1.5, -18]);
+    cam.to([-3.4, 1.9, 3.6], [.4, 1.35, -6]);
     api.caption('Bottom of the ninth. Somebody has to speak first.');
     SFX.organ(true);
     await Kit.wait(1900);
@@ -276,8 +290,8 @@
     await Kit.tween(.42, t => {
       ball.position.lerpVectors(from, to, t);
       ball.position.y += Math.sin(t * Math.PI) * .35;
-      if (t > .55 && batter.mode === 'idle') { batter.mode = 'swing'; }
-      if (batter.mode === 'swing') {
+      if (t > .55) swinging = true;
+      if (swinging) {
         const k = (t - .55) / .45;
         batter.hips.rotation.y = -.3 + k * 2.4;
         batter.arms[1].rotation.set(-2.4 + k * 1.3, 0, -.5 - k * 1.6);
@@ -291,23 +305,25 @@
     Kit.puffs(st, { origin: ball.position.clone(), count: 10, color: 0xfff1c0, speed: 3, sizeMin: .3, sizeMax: .9, life: .5, gravity: 0 });
     murmur.vol(.16, .6);
     SFX.cheer(2.6);
-    batter.mode = 'idle';
-    Kit.tween(.6, t => { batter.hips.rotation.y = 2.1 - t * 1.5; }, 'outQuad');
+    Kit.tween(.6, t => { batter.hips.rotation.y = 2.1 - t * 1.2; }, 'outQuad');   // follow-through, held
 
     // the flight: a parabola from the plate to the winner's face, with the
     // whole crowd looking up as it comes in
     const start = ball.position.clone(), end = seatPos.clone().add(new THREE.Vector3(0, 1.55, 0));
     const apex = 22;
-    ballGlow.material.opacity = .6;
+    ballGlow.material.opacity = .85;
+    ballGlow.material.color.set(0xfff0b0);
+    cam.rate(18);                      // a slow chase lags a fast ball right out of frame
     fans.forEach(f => { if (f !== target) setTimeout(() => { f.mode = 'cheer'; }, Kit.rnd(300, 1300)); });
     await Kit.tween(2.1, t => {
       ball.position.lerpVectors(start, end, t);
       ball.position.y += 4 * apex * t * (1 - t);
       ball.rotation.x += .5; ball.rotation.z += .3;
-      if (Math.random() < .5) Kit.puffs(st, { origin: ball.position.clone(), count: 1, color: 0xffffff, speed: .2, sizeMin: .25, sizeMax: .5, life: .45, gravity: 0, opacity: .5 });
+      Kit.puffs(st, { origin: ball.position.clone(), count: 1, color: 0xfff2c0, speed: .1, sizeMin: .5, sizeMax: .8, life: .7, gravity: 0, opacity: .55, growMin: -.3, growMax: -.1 });
       const back = new THREE.Vector3().subVectors(start, ball.position).setY(0).normalize();
-      const camPos = ball.position.clone().addScaledVector(back, 7 + (1 - t) * 4).add(new THREE.Vector3(0, 2.4, 0));
-      cam.to(camPos.toArray(), [ball.position.x, ball.position.y, ball.position.z], 6);
+      const camPos = ball.position.clone().addScaledVector(back, 6.5 + (1 - t) * 3).add(new THREE.Vector3(0, 1.8, 0));
+      const lead = new THREE.Vector3().subVectors(end, ball.position).multiplyScalar(.12).add(ball.position);
+      cam.to(camPos.toArray(), lead.toArray(), 18);
     }, 'linear');
 
     /* ★ BONK ★ */
@@ -317,8 +333,7 @@
     Kit.puffs(st, { origin: end.clone(), count: 18, color: 0xffd23f, speed: 3.5, sizeMin: .25, sizeMax: .7, life: 1.1, gravity: -1 });
     Kit.burst(st, { origin: end.clone(), count: 14, size: .06, color: 0xffffff, speed: 3, gravity: -10, life: 1.2, floor: seatPos.y + .05 });
     target.mode = 'bitten';
-    target.label.material.color.set(0xffd23f);
-    target.label.scale.set(2.8, 1.04, 1);
+    target.label.highlight(0xffd23f, 1.5);
     // the hot dog goes flying
     S.attach(target.dog); S.attach(target.bun);
     const dogV = new THREE.Vector3(Kit.rnd(-1.5, 1.5), 5, Kit.rnd(1, 3));
@@ -353,6 +368,7 @@
   Picker.init({
     key: 'foul-ball',
     kicker: 'Took one for the team',
+    stinger: () => SFX.organ(true),
     tagline: 'One swing. Whoever it lands on gives the update, once the ringing stops.',
     goLabel: 'Play ball',
     againLabel: 'Next batter',

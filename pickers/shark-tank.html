@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Shark Tank</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -45,7 +46,9 @@
   S.add(new THREE.AmbientLight(0xbfe8ff, 0.8));
   S.add(new THREE.HemisphereLight(0xfff0d0, 0x0d4a63, 0.9));
   const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
-  sun.position.set(-24, 20, -14);
+  // a low sunset sun: its glint becomes a glitter path near the horizon
+  // instead of a white smudge in the lower-left of every shot
+  sun.position.set(-26, 11, -58);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.left = -22; sun.shadow.camera.right = 22;
@@ -57,7 +60,7 @@
   const seaGeo = new THREE.PlaneGeometry(SEA, SEA, SEG, SEG);
   seaGeo.rotateX(-Math.PI / 2);
   const seaMat = new THREE.MeshStandardMaterial({
-    color: 0x1786a8, roughness: .12, metalness: .35, transparent: true, opacity: .93
+    color: 0x1786a8, roughness: .24, metalness: .22, transparent: true, opacity: .93
   });
   const sea = new THREE.Mesh(seaGeo, seaMat);
   sea.receiveShadow = true;
@@ -348,39 +351,62 @@
       shark.position.z = vp.z + dir.z * t * 4;
       shark.rotation.x = -.5 + t * 1.6;
       shark.rotation.z = t * .5;
-    }, 'linear').then(() => {
+    }, 'linear').then(async () => {
       SFX.splash();
       st.shake(.25, .9);
       Kit.puffs(st, { origin: shark.position.clone().setY(0), count: 26, color: 0xdff6ff, speed: 7, dir: new THREE.Vector3(0, 1, 0), sizeMin: .8, sizeMax: 2.6, life: 1.4, gravity: -4, additive: false, opacity: .8 });
+      // dive, then go back to circling unseen, instead of freezing tail-up in the water
+      const d0 = shark.position.clone(), rx = shark.rotation.x;
+      await Kit.tween(1.3, t => {
+        shark.position.set(d0.x + dir.x * t * 3, d0.y - t * 5.5, d0.z + dir.z * t * 3);
+        shark.rotation.x = rx + (1.45 - rx) * t;
+      }, 'inQuad');
+      sharkAngle = Math.atan2(shark.position.z, shark.position.x);
+      sharkRadius = Math.hypot(shark.position.x, shark.position.z);
+      sharkDepth = -4.5; tailWag = 1;
+      shark.rotation.set(0, 0, 0);
+      shark.userData.manual = false;
     });
 
     const boardEnd = new THREE.Vector3(vp.x * .28, .18, vp.z * .28 + 2.4);
     await Kit.tween(1.9, t => {
       victim.position.lerpVectors(boardStart, boardEnd, Kit.ease.outQuad(t));
       victim.position.y = boardStart.y + Math.sin(t * Math.PI) * 9 - t * .1;
-      victim.rotation.x = t * 15;
-      victim.rotation.z = t * 6;
-      victim.rotation.y = t * 3;
+      // tumble, but in whole turns that end exactly on the resting pose below,
+      // so there is no snap on landing
+      victim.rotation.x = t * Math.PI * 4;
+      victim.rotation.z = t * Math.PI * 2;
+      victim.rotation.y = -Math.PI / 2 + (1 - t) * 3;
       cam.to([boardEnd.x + 2.0, 3.6 + Math.sin(t * Math.PI) * 3.0, boardEnd.z + 9 - t * 1.5],
              [victim.position.x, victim.position.y * .55, victim.position.z], 5.5);
     }, 'linear');
 
     SFX.splash();
-    victim.rotation.set(0, Math.PI / 2, 0);
+    // -PI/2, not +PI/2: the label reads along the board, and +PI/2 left it
+    // upside down and back to front from the camera's side
+    victim.rotation.set(0, -Math.PI / 2, 0);
     Kit.puffs(st, { origin: boardEnd.clone(), count: 18, color: 0xdff6ff, speed: 4, dir: new THREE.Vector3(0, 1, 0), sizeMin: .5, sizeMax: 1.6, life: 1.2, gravity: -3, additive: false, opacity: .8 });
     await Kit.tween(.6, t => {
       victim.position.y = .18 + (1 - Kit.ease.outBounce(t)) * .5;
     }, 'linear');
 
     SFX.ding(880);
-    cam.to([boardEnd.x + .4, 1.9, boardEnd.z + 4.2], [boardEnd.x, .25, boardEnd.z], 2.2);
-    await Kit.wait(1500);
+    st.add(() => {                      // bob on the swell rather than hovering through it
+      if (!victim.parent) return false;
+      const x = victim.position.x, z = victim.position.z, w = tt;      // same clock as the sea
+      victim.position.y = waveAt(x, z, w) + .14;
+      victim.rotation.x = Math.sin(w * 1.3) * .05; victim.rotation.z = Math.cos(w * 1.1) * .06;
+      return true;
+    });
+    cam.to([boardEnd.x + .4, 2.3, boardEnd.z + 4.6], [boardEnd.x, .2, boardEnd.z - .4], 2.2);
+    await Kit.wait(1300);
     cam.stop();
   }
 
   Picker.init({
     key: 'shark-tank',
     kicker: 'Board recovered, rider missing',
+    stinger: () => SFX.jaws(),
     tagline: 'There is something under the surfboards and it has an opinion.',
     goLabel: 'Get in the water',
     againLabel: 'Back in the water',

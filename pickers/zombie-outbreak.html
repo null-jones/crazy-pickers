@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Zombie Outbreak</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -156,9 +157,7 @@
   /* ---------- people ---------- */
   let survivors = [], zombies = [], everyone = [];
   function labelFor(name) {
-    const tex = Kit.nameTexture(name, { w: 512, h: 190, bg: '#f7f4ea', fg: '#14121f', fill: .8, border: '#14121f', borderWidth: 12, radius: 22 }).texture;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    sp.scale.set(1.75, .65, 1);
+    const sp = Kit.label(st, name, { height: .65, minScreen: .028 });
     sp.position.y = 2.45;
     return sp;
   }
@@ -184,7 +183,7 @@
     return p;
   }
   function clearPeople() {
-    everyone.forEach(p => S.remove(p.g));
+    everyone.forEach(p => { if (p.label) p.label.dispose(); S.remove(p.g); });
     survivors = []; zombies = []; everyone = [];
   }
   function edgeSpawn() {
@@ -270,11 +269,21 @@
           let best = 1e9; target = null;
           survivors.forEach(s => { const d = s.g.position.distanceTo(z.g.position); if (d < best) { best = d; target = s; } });
         }
-        if (target) {
+        if (finale && target) {
+          // Surround the winner, but leave the camera's side open so the horde
+          // never stands between the lens and the last human.
+          const hp = target.g.position;
+          let th = Math.atan2(z.g.position.x - hp.x, z.g.position.z - hp.z);
+          let dth = th - FINALE_CAM_ANGLE; while (dth > Math.PI) dth -= 2 * Math.PI; while (dth < -Math.PI) dth += 2 * Math.PI;
+          const GAP = 1.35;
+          if (Math.abs(dth) < GAP) th = FINALE_CAM_ANGLE + Math.sign(dth || 1) * GAP;
+          const sx = hp.x + Math.sin(th) * 3.4, sz = hp.z + Math.cos(th) * 3.4;
+          const ddx = sx - z.g.position.x, ddz = sz - z.g.position.z, dd = Math.hypot(ddx, ddz);
+          if (dd > .15) { const k = Math.min(4, dd * 2.5) / dd; f.x += ddx * k; f.z += ddz * k; }
+          else { z.g.rotation.y = Math.atan2(hp.x - z.g.position.x, hp.z - z.g.position.z); }
+        } else if (target) {
           const dx = target.g.position.x - z.g.position.x, dz = target.g.position.z - z.g.position.z, d = Math.hypot(dx, dz);
-          const stopAt = finale ? 2.4 : 0;
-          if (d > stopAt + .05) { f.x += dx / d * 4; f.z += dz / d * 4; }
-          else if (finale) { f.x -= dx / d * 2; f.z -= dz / d * 2; }
+          if (d > .05) { f.x += dx / d * 4; f.z += dz / d * 4; }
           // the hunter gets the bite
           if (z.hunting === target && d < .75 && !target.infected && !finale) infect(target, z);
         }
@@ -289,7 +298,7 @@
     everyone.forEach(p => People.animate(p, simT, dt));
     if (idling) {
       zombies.forEach(z => { const f = tmp2.set(-z.g.position.x * .02, 0, -z.g.position.z * .02); z.g.position.addScaledVector(f, dt * 4); });
-      st.look([Math.sin(simT * .11) * 10, 8.5, 18], [0, 1.2, 2]);
+      st.look([Math.sin(simT * .11) * 12, 9.5, 23], [0, 2.6, -3]);   // store sign and the whole roster in shot
     }
     return true;
   });
@@ -306,9 +315,8 @@
     setTimeout(() => {
       People.zombify(victim);
       victim.maxSpeed = Kit.rnd(1.2, 1.7);
-      victim.label.material.color.set(0x565a6a);
-      victim.label.material.opacity = .55;
-      victim.label.scale.set(1.2, .45, 1);
+      victim.label.retire(.6);                  // only the living keep a name tag
+      victim.label = null;
       survivors = survivors.filter(s => s !== victim);
       zombies.push(victim);
       const done = pendingInfections.get(victim); if (done) { pendingInfections.delete(victim); done(); }
@@ -319,11 +327,17 @@
   function resetScene() {
     Kit.clearTweens();
     simulating = false; finale = null;
-    if (spot) { S.remove(spot); S.remove(spot.target); S.remove(beam); spot = null; }
+    spot.intensity = 0; beam.visible = false;
     build(Roster.all(), 6);
     idling = true;
   }
-  let spot = null, beam = null;
+  const FINALE_CAM_ANGLE = Math.atan2(3.5, 6);          // direction from winner to the finale camera
+  const spot = new THREE.SpotLight(0xfff2d0, 0, 40, .32, .5, 1.2);
+  S.add(spot); S.add(spot.target);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, 4.2, 19, 32, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: 0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+  beam.rotation.z = .1; beam.visible = false;
+  S.add(beam);
 
   /* ---------- the run ---------- */
   async function run(winner, api) {
@@ -380,27 +394,18 @@
     finale = { winner: hero };
     st.remove(follow);
     const heli = SFX.helicopter();
-    spot = new THREE.SpotLight(0xfff2d0, 260, 40, .32, .5, 1.2);
-    spot.position.set(hero.g.position.x + 2, 20, hero.g.position.z + 3);
-    spot.target.position.copy(hero.g.position);
-    S.add(spot); S.add(spot.target);
-    beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, 4.2, 19, 32, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: .1, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
-    beam.position.set(hero.g.position.x + 1, 10, hero.g.position.z + 1.5);
-    beam.rotation.z = .1;
-    S.add(beam);
-    hero.label.material.color.set(0x7cff5e);
-    hero.label.scale.set(2.2, .82, 1);
+    spot.intensity = 260; beam.visible = true; beam.material.opacity = .1;
+    hero.label.highlight(0x7cff5e, 1.5);
     SFX.cheer(1.6);
     await Kit.tween(2.8, t => {
       const p = hero.g.position;
       spot.position.set(p.x + 2, 20, p.z + 3); spot.target.position.copy(p);
       beam.position.set(p.x + 1, 10, p.z + 1.5);
       beam.material.opacity = .1 + Math.sin(t * 3) * .03;
-      cam.to([p.x + 4.5 - t * 1.5, 7 - t * 2.5, p.z + 7 - t * 1.5], [p.x, 1.3, p.z], 2.4);
+      cam.to([p.x + 5 - t * 1.5, 7 - t * 2.8, p.z + 8.6 - t * 2.6], [p.x, 1.5, p.z], 2.4);
     }, 'inOutQuad');
     api.caption('Last one standing.');
-    await Kit.wait(900);
+    await Kit.wait(500);
     heli.stop(1.5);
     cam.stop();
   }
@@ -408,6 +413,7 @@
   Picker.init({
     key: 'zombie-outbreak',
     kicker: 'Last one uninfected',
+    stinger: () => { SFX.groan(.9); SFX.cheer(1.8); },
     tagline: 'The car park is overrun. Whoever is still human at the end has the floor.',
     goLabel: 'Open the gates',
     againLabel: 'Another night',

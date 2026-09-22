@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">The Claw Decides</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -210,6 +211,7 @@
     arm.add(tip);
     prongs.push(arm);
   }
+  claw.children.forEach(c => c.scale.setScalar(1.35));   // hub and prongs; the claw frame itself stays unscaled
   function setClaw(open) {                    // 0 = shut, 1 = wide
     prongs.forEach(p => { p.rotation.x = -.15 - open * .75; });
   }
@@ -291,12 +293,13 @@
     const prize = buildBlocks(winner);
 
     api.caption('Inserting coin.');
-    st.look([1.6, 3.6, 8.0], [0, 3.1, 0]);
+    const cam = Kit.chase(st, { rate: 3 });
+    cam.to([1.6, 3.6, 8.0], [0, 3.1, 0]);
     SFX.tone({ freq: 900, to: 1400, dur: .08, type: 'square', gain: .13 });
     SFX.tone({ at: .1, freq: 1200, to: 700, dur: .1, type: 'square', gain: .12 });
     SFX.tone({ at: .24, freq: 520, to: 300, dur: .18, type: 'square', gain: .1 });
     await Kit.tween(1.1, t => {
-      st.look([1.6 - t * 1.6, 3.6 + t * .5, 8.0 - t * 1.6], [0, 3.1, 0]);
+      cam.to([1.6 - t * 1.6, 3.6 + t * .5, 8.0 - t * 1.6], [0, 3.1, 0]);
     }, 'inOutQuad');
 
     // line up
@@ -309,7 +312,7 @@
     await Kit.tween(1.5, t => {
       trolley.position.x = fromX + (aimX - fromX) * t + Math.sin(t * Math.PI * 2) * .18 * (1 - t);
       motor.node.frequency.value = 66 + Math.sin(t * 30) * 5;
-      st.look([-t * 1.4, 4.1 + t * .3, 6.4 - t * .8], [aimX * t, 3.3, 0]);
+      cam.to([-t * 1.4, 4.1 + t * .3, 6.4 - t * .8], [aimX * t, 3.3, 0]);
     }, 'inOutQuad');
     const aimZ = prize.position.z;
     await Kit.tween(1.0, t => {
@@ -326,7 +329,7 @@
     await Kit.tween(1.1, t => {
       setClawDrop(.6 + t * 1.05);
       winch.node.frequency.value = 120 - t * 40;
-      st.look([-1.4 + t * .5, 4.4 + t * .5, 5.6 + t * 1.2], [prize.position.x, 3.4 - t * .5, prize.position.z]);
+      cam.to([-1.4 + t * .5, 4.4 + t * .5, 5.6 + t * 1.2], [prize.position.x, 3.4 - t * .5, prize.position.z]);
     }, 'inOutQuad');
     winch.stop(.1);
 
@@ -345,19 +348,24 @@
       setClawDrop(1.65 - t * 1.05);
       winch2.node.frequency.value = 90 + t * 50;
       prize.rotation.z = Math.sin(t * 14) * .18 * (1 - t * .5);
-      st.look([-.9 - t * .5, 4.9, 6.8 - t * .4], [prize.position.x, 2.9 + t * .7, 0]);
+      cam.to([prize.position.x - 1.3, 3.5 + t * .6, 3.6], [prize.position.x, 2.7 + t * .8, prize.position.z], 3.2);
     }, 'inOutQuad');
     winch2.stop(.1);
 
     api.caption('Do not trust the claw.');
     SFX.tone({ freq: 220, to: 160, dur: .3, type: 'square', gain: .1 });
-    await Kit.tween(.8, t => {
-      const wobble = Math.sin(t * 22) * .3 * (1 - t);
-      claw.rotation.z = wobble;
-      setClaw(.18 + Math.max(0, Math.sin(t * 9)) * .22);   // slipping
+    await Kit.tween(1.1, t => {
+      claw.rotation.z = Math.sin(t * 20) * .32 * (1 - t);
+      setClaw(.18 + Math.max(0, Math.sin(t * Math.PI)) * .3);           // prongs loosen...
+      prize.position.y = -.62 - Math.sin(Math.min(1, t * 1.6) * Math.PI / 2) * .26;   // ...and it slides
+      prize.rotation.z = Math.sin(t * 16) * .35 * (1 - t);
     }, 'linear');
+    SFX.noise({ dur: .12, freq: 2600, to: 900, type: 'bandpass', Q: 2, gain: .14 });   // the catch
+    SFX.thud(.2);
+    st.shake(.05, .85);
     claw.rotation.z = 0;
-    setClaw(.18);
+    setClaw(.12);
+    prize.rotation.z = 0;
     SFX.ding(1300);
 
     // to the chute
@@ -366,7 +374,7 @@
       trolley.position.x = aimX + (-1.55 - aimX) * Kit.ease.inOutCubic(t);
       trolley.position.z = aimZ + (0.95 - aimZ) * Kit.ease.inOutCubic(t);
       claw.rotation.z = Math.sin(t * 12) * .07 * (1 - t);
-      st.look([-2.2 - t * .6, 4.8, 6.6 - t * .3], [-1.3, 3.6, .5]);
+      cam.to([-2.2 - t * .6, 4.8, 6.6 - t * .3], [-1.3, 3.6, .5]);
     }, 'linear');
 
     // release
@@ -381,7 +389,7 @@
       prize.position.z = from.z + (TRAY.z - from.z) * Kit.ease.outQuad(t);
       prize.position.y = from.y + (TRAY_REST - from.y) * Kit.ease.inQuad(t);
       prize.rotation.x += .19; prize.rotation.z += .12;
-      st.look([-2.8 + t * .7, 4.7 - t * 2.1, 6.3 - t * .9], [-1.55, 3.2 - t * 2.5, .9 + t * 1.2]);
+      cam.to([-2.8 + t * .7, 4.7 - t * 2.1, 6.3 - t * .9], [-1.55, 3.2 - t * 2.5, .9 + t * 1.2]);
     }, 'linear');
     SFX.thud(.4);
     SFX.noise({ dur: .35, freq: 1800, to: 300, gain: .18 });
@@ -395,14 +403,16 @@
 
     SFX.fanfare();
     await Kit.tween(1.2, t => {
-      st.look([-2.1 + t * .35, 2.9 - t * .7, 5.6 - t * 1.0], [TRAY.x, TRAY_REST, TRAY.z]);
+      cam.to([-2.1 + t * .35, 2.9 - t * .7, 5.6 - t * 1.0], [TRAY.x, TRAY_REST, TRAY.z]);
     }, 'inOutQuad');
-    await Kit.wait(600);
+    await Kit.wait(300);
+    cam.stop();
   }
 
   Picker.init({
     key: 'claw-machine',
     kicker: 'Won fair and square',
+    stinger: () => SFX.jingle(),
     tagline: 'The claw grips at 4% of its advertised strength. Good luck.',
     goLabel: 'Insert coin',
     againLabel: 'Another go',

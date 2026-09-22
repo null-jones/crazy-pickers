@@ -4,7 +4,7 @@
 
    p = People.make({ x, z, facing })       -> adds p.g to nothing; you add it
    People.animate(p, t, dt)                -> poses limbs for p.mode
-   modes: idle | startle | run | shamble | bitten | cheer | knocked
+   modes: idle | startle | run | shamble | bitten | cheer | knocked | pose
    ============================================================ */
 window.People = (function () {
   const T = () => window.THREE;
@@ -88,6 +88,7 @@ window.People = (function () {
     const tt = t + p.phase;
     const A = p.arms, L = p.legPivots, H = p.hips;
     switch (p.mode) {
+      case 'pose': break;       // scripted by the scene; hands off
       case 'run': {
         const s = Math.sin(tt * 16 * p.speed);
         L[0].rotation.x = s * .9; L[1].rotation.x = -s * .9;
@@ -161,8 +162,10 @@ window.People = (function () {
   }
 
   function zombify(p) {
-    p.mats.skin.forEach(m => m.color.set(0x8fbf6a));
-    p.mats.shirt.forEach(m => m.color.multiplyScalar(.45));
+    // green skin plus a faint sickly glow, so a zombie reads as a zombie at
+    // car-park distance, not just a person in darker clothes
+    p.mats.skin.forEach(m => { m.color.set(0x8fbf6a); m.emissive.set(0x3a7a1c); m.emissiveIntensity = .55; });
+    p.mats.shirt.forEach(m => { m.color.multiplyScalar(.45); m.emissive.set(0x1c3a10); m.emissiveIntensity = .4; });
     p.mats.legs.forEach(m => m.color.multiplyScalar(.5));
     p.eyes.forEach(e => { e.material.color.set(0xff2a2a); e.material.emissive.set(0xff1a1a); e.material.emissiveIntensity = 2.2; e.scale.setScalar(1.35); });
     p.mode = 'shamble';

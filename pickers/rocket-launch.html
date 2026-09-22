@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="../shared/base.css">
 </head>
 <body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Launch Failure</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
 <script src="../vendor/three.global.js"></script>
 <script src="../shared/sfx.js"></script>
 <script src="../shared/roster.js"></script>
@@ -179,14 +180,18 @@
     w: 700, h: 240, bg: '#0a0d18', fg: '#6dff9b', fill: .8, shadow: '#3bff86', shadowBlur: 30,
     border: '#2a3550', borderWidth: 14, radius: 8
   });
-  const displayBoard = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.5),
-    new THREE.MeshStandardMaterial({ map: boardKit.texture, emissive: 0xffffff, emissiveMap: boardKit.texture, emissiveIntensity: .8, roughness: .6 }));
-  displayBoard.position.set(0, 3.0, 13);
-  displayBoard.rotation.y = Math.PI;
+  // Behind the pads and facing the camera. It used to stand in front of them
+  // facing away, which hid the countdown and left a black post mid-frame.
+  const displayBoard = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.8),
+    new THREE.MeshStandardMaterial({ map: boardKit.texture, emissive: 0xffffff, emissiveMap: boardKit.texture, emissiveIntensity: 1, roughness: .6 }));
+  displayBoard.position.set(0, 10.4, -13);
   S.add(displayBoard);
-  const boardPost = Kit.box(.3, 3.0, .3, 0x4a4a58, { roughness: .8 });
-  boardPost.position.set(0, 1.5, 13.1);
-  S.add(boardPost);
+  const boardFrame = Kit.box(14.8, 5.6, .5, 0x1c2030, { roughness: .6, metalness: .4 });
+  boardFrame.position.set(0, 10.4, -13.3);
+  S.add(boardFrame);
+  [-6.4, 6.4].forEach(x => { const leg = Kit.box(.5, 7.6, .5, 0x3a3f52, { roughness: .7 }); leg.position.set(x, 3.8, -13.3); S.add(leg); });
+  const debrisMat = new THREE.MeshStandardMaterial({ color: 0xd9202c, roughness: .5, metalness: .3 });
+  const FIREWORK = [0xff5aa8, 0xffd166, 0x5ae4ff].map(c => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.4, roughness: .4 }));
 
   /* ---------- state ---------- */
   let tt = 0, idling = true;
@@ -206,8 +211,10 @@
     return true;
   });
 
+  let skyLabel = null;
   function resetScene() {
     Kit.clearTweens();
+    if (skyLabel) { skyLabel.dispose(); skyLabel = null; }
     buildRockets();
     boardKit.draw('T-00:10');
     idling = true;
@@ -221,13 +228,27 @@
     const doomed = rockets.filter(r => r !== hero);
     const span = Math.max(10, Math.ceil(rockets.length / (rockets.length > 8 ? 2 : 1)) * SPACING);
 
+    const cam = Kit.chase(st, { rate: 2.4 });
+    // The winner is known now, so draw the sky name now: a big blurred canvas
+    // takes a couple of hundred ms, which is fine here and not at the climax.
+    const sky = Kit.label(st, winner, {
+      height: 15, minScreen: .16, depthTest: false,
+      style: { w: 1024, h: 300, bg: null, fg: '#fff8e0', fill: .9, border: null, shadow: '#ffb347', shadowBlur: 46 }
+    });
+    sky.material.blending = THREE.AdditiveBlending;
+    sky.visible = false;
+    S.add(sky);
+    skyLabel = sky;
+    const xs = rockets.map(r => r.position.x), x0 = Math.min(...xs) - 1, x1 = Math.max(...xs) + 1;
     api.caption('All engines nominal. Allegedly.');
-    st.look([span * .3, 5.4, span * .95 + 6], [0, 2.6, 0]);
-    await Kit.tween(1.6, t => {
-      st.look([span * .3 - t * span * .3, 5.4 - t * 1.4, span * .95 + 6 - t * 3], [0, 2.6 - t * .3, 0]);
-    }, 'inOutQuad');
+    cam.to([x0, 2.4, 7.5], [x0 + 1.5, 1.5, 0]);
+    await Kit.wait(1500);
 
-    // countdown
+    // countdown, tracking along the row so every pad sign is readable once
+    Kit.tween(3.1, t => {
+      const x = x0 + (x1 - x0) * t;
+      cam.to([x, 2.4, 7.5], [x + 1.5, 1.5, 0], 3.2);
+    }, 'inOutQuad');
     for (let n = 5; n >= 1; n--) {
       boardKit.draw('T-' + n);
       SFX.countdown(n);
@@ -249,7 +270,7 @@
         r.userData.engineLight.intensity = t * 40;
         r.position.y = Math.sin(tt * 60 + r.position.x) * .02 * t;
       });
-      st.look([0, 3.6, span * .8 + 2], [0, 2.4, 0]);
+      cam.to([0, 4.2, span * .8 + 3], [0, 4.2, -2], 2.2);   // wide, with the board in shot
     }, 'outQuad');
     rockets.forEach(r => {
       Kit.puffs(st, { origin: r.position.clone().setY(.3), count: 12, color: 0xcfcfd8, speed: 5, sizeMin: 1, sizeMax: 3, life: 3.2, gravity: 1.2, additive: false, opacity: .5, spread: 1 });
@@ -272,7 +293,7 @@
         st.shake(.25, .9);
         Kit.burst(st, {
           origin: org, count: 34, size: .2, speed: 10, gravity: -18, life: 2, floor: .2, jitter: .5,
-          material: new THREE.MeshStandardMaterial({ color: 0xd9202c, roughness: .5, metalness: .3 })
+          material: debrisMat
         });
         Kit.puffs(st, { origin: org, count: 16, color: 0xffb060, speed: 7, sizeMin: 1.2, sizeMax: 3.6, life: 1.4, gravity: 2.4 });
         Kit.puffs(st, { origin: org, count: 10, color: 0x3a3540, speed: 4, sizeMin: 2, sizeMax: 6, life: 3, gravity: 1.4, additive: false, opacity: .6 });
@@ -316,35 +337,58 @@
     st.shake(.4, .96);
     Kit.puffs(st, { origin: hero.position.clone().setY(.3), count: 40, color: 0xe8e8f0, speed: 9, sizeMin: 1.6, sizeMax: 5, life: 4, gravity: 1.6, additive: false, opacity: .55, spread: 1.2 });
 
+    const APEX = 58, hx = hero.position.x, hz = hero.position.z;
     let alt = 0;
-    await Kit.tween(4.2, (t, dt) => {
-      alt = Kit.ease.inQuad(t) * 210;
+    cam.to([hx + 4, 3.2, hz + 13], [hx, 3, hz], 3);
+    await Kit.tween(3.4, t => {
+      alt = Kit.ease.inQuad(t) * APEX;
       hero.position.y = alt;
       hero.userData.flame.scale.y = 2.6 + t * 5;
       hero.userData.flame.material.opacity = .95;
       hero.userData.engineLight.intensity = 60;
-      hero.rotation.z = -t * .18;
+      hero.rotation.z = -t * .12;
       if (Math.random() < .6) {
         Kit.puffs(st, {
           origin: hero.position.clone().setY(hero.position.y - 1), count: 2, color: 0xd8d8e4,
           speed: 3, sizeMin: 1 + t * 3, sizeMax: 3 + t * 6, life: 3, gravity: .6, additive: false, opacity: .45
         });
       }
-      const back = 8 + t * t * 24;
-      st.look([2 + t * 3, Math.max(3.4, alt * .82 + 2), hero.position.z + back],
-              [hero.position.x, alt + 1.5, 0]);
+      cam.to([hx + 4 + t * 4, 3.2 + alt * .55, hz + 13 + t * 22], [hx, alt + 2, hz], 5);
       roar.filterTo(320 - t * 200, .2);
-      roar.vol(Math.max(.02, .34 * (1 - t * .8)), .2);
+      roar.vol(Math.max(.02, .34 * (1 - t * .7)), .2);
     }, 'linear');
-    roar.stop(.8);
-    SFX.tone({ freq: 200, to: 40, dur: 1.6, type: 'sine', gain: .2 });
-    api.caption('Cleared the tower.');
-    await Kit.wait(700);
+
+    /* ★ it goes off like a firework and writes the name in the sky ★ */
+    roar.stop(.3);
+    // hide the rocket's parts, not the rocket: an invisible group drops its
+    // engine light, the light count changes, and every shader recompiles
+    hero.userData.parts.forEach(m => { m.visible = false; });
+    hero.userData.flame.visible = false;
+    hero.userData.engineLight.intensity = 0;
+    SFX.explosion(.45);
+    const top = new THREE.Vector3(hx, APEX + 2, hz);
+    FIREWORK.forEach((m, i) => Kit.burst(st, {
+      origin: top, count: 120, size: .7, speed: 20 - i * 4, gravity: -2.5, drag: 1.2, life: 2.8, shrink: true, material: m
+    }));
+    Kit.puffs(st, { origin: top, count: 14, color: 0xfff0c0, speed: 4, sizeMin: 4, sizeMax: 10, life: 1.1, gravity: 0 });
+    [0, .25, .5, .8].forEach(at => SFX.noise({ at: .35 + at, dur: .12, freq: 4000, to: 900, type: 'bandpass', Q: 1, gain: .12 }));
+    boardKit.draw(winner);
+    sky.position.copy(top);
+    sky.visible = true;
+    api.caption(null);
+    await Kit.tween(1.2, t => {
+      sky.highlight(0xffffff, .01 + Kit.ease.outBack(t) * .99);
+      cam.to([hx + 3, APEX * .55, hz + 34], [hx, APEX - 7, hz], 2.4);   // name sits in the upper third, clear of the banner
+    }, 'linear');
+    await Kit.wait(500);
+    cam.stop();
   }
 
   Picker.init({
     key: 'rocket-launch',
     kicker: 'Only rocket to clear the tower',
+    stinger: () => { SFX.fanfare(); SFX.cheer(2.2); },
+    prewarm: [debrisMat, ...FIREWORK],
     tagline: 'Everyone gets a rocket. All of them are lit at once.',
     goLabel: 'Begin countdown',
     againLabel: 'Launch again',

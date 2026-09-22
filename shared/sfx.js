@@ -350,11 +350,97 @@ window.SFX = (function () {
       noise({ at: 0.46, dur: 1, freq: 6000, type: 'highpass', gain: 0.08 });
     },
 
+    // A crowd: detuned voices through vowel formants, each whooping up and
+    // back down, over a breathy bed and scattered claps. (The old version was
+    // filtered noise with random blips and sounded like a detuned radio.)
     cheer(dur = 1.8) {
-      noise({ dur, freq: 1400, type: 'bandpass', Q: 0.7, gain: 0.14, attack: 0.2, rate: 1.3 });
-      for (let i = 0; i < 26; i++) {
-        tone({ at: Math.random() * dur * 0.7, freq: 700 + Math.random() * 1600, dur: 0.15 + Math.random() * 0.3, type: 'triangle', gain: 0.02 });
+      const c = ctx(), t0 = c.currentTime;
+      noise({ dur, freq: 700, type: 'bandpass', Q: 1.2, gain: .08, attack: .25 });
+      noise({ dur: dur * .9, freq: 1700, type: 'bandpass', Q: 1.6, gain: .045, attack: .3 });
+      const vowels = [[730, 1090], [570, 840], [300, 870], [530, 1840], [640, 1190], [400, 2000]];
+      for (let i = 0; i < 18; i++) {
+        const t = t0 + Math.random() * dur * .3, len = dur * (.45 + Math.random() * .55);
+        const o = c.createOscillator(); o.type = 'sawtooth';
+        const f0 = 150 + Math.random() * 280;
+        o.frequency.setValueAtTime(f0, t);
+        o.frequency.linearRampToValueAtTime(f0 * (1.25 + Math.random() * .3), t + len * .3);
+        o.frequency.linearRampToValueAtTime(f0 * 1.02, t + len);
+        const vib = c.createOscillator(), vg = c.createGain();
+        vib.frequency.value = 5 + Math.random() * 2; vg.gain.value = f0 * .025;
+        vib.connect(vg); vg.connect(o.frequency);
+        const [F1, F2] = vowels[i % vowels.length];
+        const b1 = c.createBiquadFilter(); b1.type = 'bandpass'; b1.frequency.value = F1; b1.Q.value = 5;
+        const b2 = c.createBiquadFilter(); b2.type = 'bandpass'; b2.frequency.value = F2; b2.Q.value = 7;
+        const g = c.createGain();
+        g.gain.setValueAtTime(.0001, t);
+        g.gain.exponentialRampToValueAtTime(.05, t + .1 + Math.random() * .1);
+        g.gain.exponentialRampToValueAtTime(.0001, t + len);
+        o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(master);
+        o.start(t); vib.start(t); o.stop(t + len + .05); vib.stop(t + len + .05);
       }
+      for (let i = 0; i < 34; i++) {
+        noise({ at: .12 + Math.random() * dur * .85, dur: .03, freq: 1400 + Math.random() * 1400, type: 'bandpass', Q: 1.1, gain: .06 });
+      }
+    },
+
+    // mmm-OOO: a saw through a lowpass that opens and closes, pitch sagging
+    moo(pitch = 1) {
+      const c = ctx(), t = c.currentTime, dur = 1.3;
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(128 * pitch, t);
+      o.frequency.linearRampToValueAtTime(122 * pitch, t + .4);
+      o.frequency.linearRampToValueAtTime(92 * pitch, t + dur);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 5;
+      f.frequency.setValueAtTime(240, t);
+      f.frequency.linearRampToValueAtTime(950, t + .45);
+      f.frequency.linearRampToValueAtTime(360, t + dur);
+      const g = c.createGain();
+      g.gain.setValueAtTime(.0001, t);
+      g.gain.exponentialRampToValueAtTime(.24, t + .15);
+      g.gain.setValueAtTime(.22, t + dur * .7);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t); o.stop(t + dur + .05);
+    },
+
+    /* ---- endings: one per picker, so the result is not the same fanfare twelve times ---- */
+    jingle() {                               // arcade prize win
+      [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5, 1318.5].forEach((f, i) =>
+        tone({ at: i * .075, freq: f, dur: .14, type: 'square', gain: .1 }));
+      [1046.5, 1318.5, 1567.98].forEach(f => tone({ at: .56, freq: f, dur: .7, type: 'square', gain: .07 }));
+    },
+    jaws() {                                 // the two notes, accelerating
+      let at = 0, gap = .42;
+      for (let i = 0; i < 8; i++) {
+        tone({ at, freq: i % 2 ? 87.31 : 82.41, dur: .28, type: 'sawtooth', gain: .2, filter: 'lowpass', filterFreq: 420 });
+        at += gap; gap *= .8;
+      }
+      S.splash && setTimeout(() => S.splash(), at * 1000);
+    },
+    theremin() {
+      const c = ctx(), t = c.currentTime, dur = 2.2;
+      const o = c.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(520, t);
+      o.frequency.linearRampToValueAtTime(880, t + .7);
+      o.frequency.linearRampToValueAtTime(610, t + 1.4);
+      o.frequency.linearRampToValueAtTime(990, t + dur);
+      const vib = c.createOscillator(), vg = c.createGain();
+      vib.frequency.value = 6.5; vg.gain.value = 16;
+      vib.connect(vg); vg.connect(o.frequency);
+      const g = c.createGain();
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.16, t + .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g); g.connect(master);
+      o.start(t); vib.start(t); o.stop(t + dur + .05); vib.stop(t + dur + .05);
+    },
+    gong() {                                 // inharmonic partials, long tail
+      [[72, .3], [118, .18], [163, .12], [231, .08], [319, .05]].forEach(([f, g]) =>
+        tone({ freq: f, to: f * .985, dur: 3.2, type: 'sine', gain: g, attack: .004, exp: false }));
+      noise({ dur: .25, freq: 2400, to: 300, gain: .12 });
+    },
+    microwaveDone() { [0, .4, .8].forEach(at => tone({ at, freq: 1000, dur: .28, type: 'square', gain: .12 })); },
+    bubbleUp() {
+      for (let i = 0; i < 9; i++) tone({ at: i * .07, freq: 300 + i * 90, to: 700 + i * 140, dur: .1, type: 'sine', gain: .12 });
+      tone({ at: .7, freq: 1320, dur: .8, type: 'sine', gain: .16 });
     },
 
     groan(pitch = 1) {

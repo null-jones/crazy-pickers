@@ -22,8 +22,8 @@ window.Roster = (function () {
 
   // ?names=A,B,C overrides the saved list for one page load and never touches it
   const override = (() => {
-    const q = new URLSearchParams(location.search).get('names');
-    return q ? dedupe(q.split(',')) : null;
+    const q = new URLSearchParams(location.search).get('names') || (window.__qa && window.__qa.names);
+    return q ? dedupe(Array.isArray(q) ? q : q.split(',')) : null;
   })();
   const isOverride = () => !!override;
 
