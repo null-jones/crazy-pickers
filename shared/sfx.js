@@ -620,6 +620,57 @@ window.SFX = (function () {
       }
     },
 
+    /* ---- sheep ---- */
+    baa(pitch = 1, dur = .55) {                // a bleat: buzzy saw, fast wobble, nasal formant
+      const c = ctx(), t = c.currentTime;
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(330 * pitch, t); o.frequency.linearRampToValueAtTime(300 * pitch, t + dur);
+      const wob = c.createOscillator(), wg = c.createGain(); wob.frequency.value = 17; wg.gain.value = 22 * pitch;
+      wob.connect(wg); wg.connect(o.frequency);
+      const trem = c.createGain(); trem.gain.value = .75;
+      const tl = c.createOscillator(), tg = c.createGain(); tl.frequency.value = 17; tg.gain.value = .25; tl.connect(tg); tg.connect(trem.gain);
+      const b1 = c.createBiquadFilter(); b1.type = 'bandpass'; b1.frequency.value = 900; b1.Q.value = 3;
+      const b2 = c.createBiquadFilter(); b2.type = 'bandpass'; b2.frequency.value = 2300; b2.Q.value = 5;
+      const g = c.createGain();
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.22, t + .05); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(b1); o.connect(b2); b1.connect(trem); b2.connect(trem); trem.connect(g); g.connect(master);
+      [o, wob, tl].forEach(n => { n.start(t); n.stop(t + dur + .05); });
+    },
+    snore() {                                  // in through the nose, out with a rattle
+      noise({ dur: 1.0, freq: 320, to: 700, type: 'bandpass', Q: 1.2, gain: .12, attack: .5 });
+      const c = ctx(), t = c.currentTime + 1.05, dur = 1.1;
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 68;
+      const trem = c.createGain(); trem.gain.value = .6;
+      const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 24; lg.gain.value = .4; l.connect(lg); lg.connect(trem.gain);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
+      const g = c.createGain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2, t + .15); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(f); f.connect(trem); trem.connect(g); g.connect(master);
+      [o, l].forEach(n => { n.start(t); n.stop(t + dur + .05); });
+    },
+    // music box: Brahms' lullaby, looped for `dur` seconds; stop() fades it out
+    lullaby(dur = 12, tempo = 1) {
+      const c = ctx(), bus = c.createGain(); bus.gain.value = 1; bus.connect(master);
+      const N = { D4: 293.66, E4: 329.63, F4: 349.23, G4: 392, A4: 440, B4: 493.88, C5: 523.25 };
+      const tune = [['E4', 1], ['E4', 1], ['G4', 2], ['E4', 1], ['E4', 1], ['G4', 2], ['E4', 1], ['G4', 1], ['C5', 2], ['B4', 1.5], ['A4', .5], ['A4', 1], ['G4', 1],
+        ['D4', 1], ['E4', 1], ['F4', 2], ['D4', 1], ['E4', 1], ['F4', 2], ['D4', 1], ['F4', 1], ['B4', 1], ['A4', 1], ['G4', 1], ['B4', 1], ['C5', 2]];
+      const beat = .27 / tempo;
+      let at = 0;
+      while (at < dur) {
+        for (const [n, b] of tune) {
+          if (at >= dur) break;
+          const f = N[n] * 2;
+          tone({ at, freq: f, dur: .9, type: 'sine', gain: .09, dest: bus });
+          tone({ at, freq: f * 3.01, dur: .35, type: 'sine', gain: .025, dest: bus });
+          at += b * beat;
+        }
+      }
+      return { stop(fade = .3) { const n = ctx().currentTime; bus.gain.cancelScheduledValues(n); bus.gain.setTargetAtTime(.0001, n, fade / 3); } };
+    },
+    slideDown(dur = .9) {                      // the record-scratch / slide-whistle "nope"
+      tone({ freq: 1400, to: 180, dur, type: 'sine', gain: .14, attack: .02 });
+      noise({ dur: .18, freq: 2500, to: 600, type: 'bandpass', Q: 2, gain: .12 });
+    },
+
     sadTrombone() {
       const seq = [[311.13, 0], [293.66, 0.22], [277.18, 0.44], [261.63, 0.66]];
       seq.forEach(([f, at]) => tone({ at, freq: f, to: f * 0.97, dur: at === 0.66 ? 0.9 : 0.24, type: 'sawtooth', gain: 0.13, filter: 'lowpass', filterFreq: 900 }));

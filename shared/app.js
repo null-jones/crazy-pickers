@@ -7,6 +7,25 @@ window.Picker = (function () {
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
+  // Where we are in today's standup, shared by every picker on this machine.
+  // A gap of 45 minutes between picks means a new standup has started.
+  const Standup = (function () {
+    const KEY = 'crazy-pickers:standup', GAP = 45 * 60 * 1000;
+    const read = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } };
+    return {
+      // call once per completed pick; returns 1 for the first speaker, 2 for the next...
+      next() {
+        if (window.__qa) return 1;                    // the QA harness never touches real state
+        const s = read(), now = Date.now();
+        const n = s.at && now - s.at < GAP ? (s.n || 0) + 1 : 1;
+        try { localStorage.setItem(KEY, JSON.stringify({ n, at: now })); } catch (e) {}
+        return n;
+      }
+    };
+  })();
+  const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
+  const ordinal = n => ORD[n - 1] || 'next';
+
   function el(tag, cls, html) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -52,7 +71,7 @@ window.Picker = (function () {
     root.appendChild(cap);
 
     const win = el('div', 'winner');
-    win.innerHTML = `<p class="kicker">${opts.kicker || 'Today you are first'}</p>
+    win.innerHTML = `<p class="kicker">${opts.kicker || 'You are up'}</p>
       <h2 class="name"></h2>
       <p class="verdict"></p>
       <div class="row">
@@ -156,12 +175,15 @@ window.Picker = (function () {
       try { await opts.run(winner, api); }
       catch (e) { console.error(e); }
       Roster.commit(winner);           // only now does the pick count
+      const place = Standup.next();
       syncRemaining();
       api.caption(null);
       // let the payoff shot land before anything covers it
       await wait(opts.hold ?? 1100);
       win.querySelector('.name').textContent = winner;
-      const v = typeof opts.verdict === 'function' ? opts.verdict(winner) : (opts.verdict || '');
+      // verdicts are written as "X goes first"; after the first pick, say where they actually are
+      const v = (typeof opts.verdict === 'function' ? opts.verdict(winner) : (opts.verdict || ''))
+        .replace(/goes first/g, 'goes ' + ordinal(place));
       win.querySelector('.verdict').textContent = v;
       win.querySelector('.name').style.animation = 'none';
       void win.querySelector('.name').offsetWidth;

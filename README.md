@@ -1,6 +1,6 @@
 # Crazy Pickers
 
-Fifteen stupid ways to decide who talks first in standup. Each one is a 3D scene
+Sixteen stupid ways to decide who talks first in standup. Each one is a 3D scene
 with sound. No build step, no dependencies, no network.
 
 **[Open them →](https://elliej.dev/crazy-pickers/)**
@@ -24,6 +24,7 @@ with sound. No build step, no dependencies, no network.
 | 🦖 | **Kaiju Rampage** | A city of named buildings. A lizard from the harbour spares one, then roars at it |
 | 🏰 | **Cow Trebuchet** | Named cows flung at a castle. All fall short except the one that goes through the gate |
 | 🐦 | **Pigeon Strike** | The team on park benches. Two near misses, one direct hit |
+| 🐑 | **Counting Sheep** | An insomniac counts the team over a fence. Whoever clips it puts them to sleep |
 
 ## Names
 
@@ -36,6 +37,8 @@ It's kept in `localStorage` and shared by every picker.
 - `?names=Ada,Grace,Linus` overrides the list for a single page load without
   touching the saved roster or its cycle.
 - Duplicate names are collapsed (case-insensitively).
+- The result says who goes first, then second, third and so on, across every
+  picker. It starts again from "first" after 45 minutes without a pick.
 
 Space or Enter runs a picker, and re-runs it once a result is up. Esc (or a
 click outside the card) hides the result so you can look at the scene. Each
