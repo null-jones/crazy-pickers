@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Counting Sheep — Crazy Pickers</title>
+<meta name="description" content="An insomniac counts the team over a fence. One of them does not clear it. One of sixteen unhinged 3D standup name pickers.">
+<link rel="canonical" href="https://elliej.dev/crazy-pickers/pickers/sheep-counting.html">
+<meta name="theme-color" content="#05060c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Crazy Pickers">
+<meta property="og:title" content="Counting Sheep — Crazy Pickers">
+<meta property="og:description" content="An insomniac counts the team over a fence. One of them does not clear it. One of sixteen unhinged 3D standup name pickers.">
+<meta property="og:url" content="https://elliej.dev/crazy-pickers/pickers/sheep-counting.html">
+<meta property="og:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Crazy Pickers: a chaotic sticker collage of a crashing car, a cat coughing up a hairball, a toilet, a batter and a zombie, with the words WHO GOES FIRST?!">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Counting Sheep — Crazy Pickers">
+<meta name="twitter:description" content="An insomniac counts the team over a fence. One of them does not clear it. One of sixteen unhinged 3D standup name pickers.">
+<meta name="twitter:image" content="https://elliej.dev/crazy-pickers/assets/og.png">
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<div class="boot" role="status" aria-live="polite"><div class="spin"></div><p class="t">Counting Sheep</p><p class="s">Warming up the chaos</p><p class="err">Still loading. If this sticks, reload the page.</p></div>
+<script src="../vendor/three.global.js"></script>
+<script src="../shared/sfx.js"></script>
+<script src="../shared/roster.js"></script>
+<script src="../shared/pickers.js"></script>
+<script src="../shared/three-kit.js"></script>
+<script src="../shared/people.js"></script>
+<script src="../shared/app.js"></script>
+<script>
+(function () {
+  const THREE = window.THREE;
+  const st = Kit.stage({ fov: 50, exposure: 1.3, far: 420 });
+  const S = st.scene;
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  const std = (color, roughness = .85, extra) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness }, extra || {}));
+
+  // a moonlit dream meadow
+  const sky = Kit.gradientSky([[0, '#0b0c2c'], [.32, '#25225e'], [.46, '#5d4d98'], [.5, '#a08bcc'], [.53, '#2c2b58'], [1, '#15163a']]);
+  S.background = sky;
+  Kit.env(st, sky, .9);
+  S.fog = new THREE.Fog(0x2c2a60, 34, 150);
+
+  S.add(new THREE.HemisphereLight(0xa9b2ff, 0x2f3a4a, 1.0));
+  S.add(new THREE.AmbientLight(0xb8b0ff, .3));
+  const moonLight = new THREE.DirectionalLight(0xd2dcff, 1.9);
+  moonLight.position.set(-18, 26, -20); moonLight.target.position.set(0, 0, 0); S.add(moonLight.target);
+  moonLight.castShadow = true;
+  moonLight.shadow.mapSize.set(2048, 2048);
+  Object.assign(moonLight.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 5, far: 90 });
+  moonLight.shadow.bias = -0.0005;
+  S.add(moonLight);
+  const fillLight = new THREE.DirectionalLight(0xffd9b0, .55);
+  fillLight.position.set(10, 8, 20); S.add(fillLight);
+
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(170, 48), std(0x4f8a62, 1));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; S.add(ground);
+  {
+    const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(.06, .26, 4), std(0x7ab884, 1, { flatShading: true }), 700);
+    const flowers = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.055, 0), std(0xffffff, .6, { emissive: 0xffffff, emissiveIntensity: .25 }), 160);
+    const d = new THREE.Object3D(), c = new THREE.Color();
+    for (let i = 0; i < 700; i++) {
+      let x, z; do { x = Kit.rnd(-28, 28); z = Kit.rnd(-16, 16); } while (Math.abs(z) < 1.2 && x > -8 && x < 17);   // keep the lane clear
+      d.position.set(x, .11, z); d.rotation.set(Kit.rnd(-.2, .2), Kit.rnd(0, 6), Kit.rnd(-.2, .2)); d.scale.setScalar(Kit.rnd(.7, 1.3)); d.updateMatrix();
+      tufts.setMatrixAt(i, d.matrix); tufts.setColorAt(i, c.setHSL(.36 + Math.random() * .06, .45, .38 + Math.random() * .12));
+    }
+    for (let i = 0; i < 160; i++) {
+      d.position.set(Kit.rnd(-26, 26), .07, Kit.rnd(-15, 15)); d.rotation.set(0, 0, 0); d.scale.setScalar(Kit.rnd(.7, 1.2)); d.updateMatrix();
+      flowers.setMatrixAt(i, d.matrix); flowers.setColorAt(i, c.set(Kit.pickOne([0xfff2a8, 0xffb8d8, 0xc8b8ff, 0xffffff])));
+    }
+    tufts.receiveShadow = true; S.add(tufts); S.add(flowers);
+  }
+  const hillMat = std(0x3f7458, 1, { flatShading: true });
+  const BLOB = new THREE.IcosahedronGeometry(1, 1);
+  for (let i = 0; i < 9; i++) {
+    const h = new THREE.Mesh(BLOB, hillMat);
+    h.scale.set(Kit.rnd(22, 38), Kit.rnd(5, 11), Kit.rnd(14, 20));
+    h.position.set(-110 + i * 28, -2, Kit.rnd(-70, -55)); S.add(h);
+  }
+  // moon, stars, and a few drifting sparkles
+  const moon = Kit.ball(5, 0xfff6dc, 32, { emissive: 0xfff2cc, emissiveIntensity: 1.3 });
+  moon.position.set(-34, 34, -95); moon.castShadow = moon.receiveShadow = false; S.add(moon);
+  const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.softSprite(), color: 0xc9c2ff, transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  moonGlow.position.copy(moon.position); moonGlow.scale.setScalar(34); S.add(moonGlow);
+  {
+    const n = 500, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, e = Math.random() * .9 + .08, r = 200;
+      pos[i * 3] = Math.cos(a) * Math.cos(e) * r; pos[i * 3 + 1] = Math.sin(e) * r; pos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * r;
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    S.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, sizeAttenuation: true, fog: false })));
+  }
+  const sparkles = [];
+  for (let i = 0; i < 26; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: Kit.softSprite(), color: 0xffe9a8, transparent: true, opacity: .7, blending: THREE.AdditiveBlending, depthWrite: false }));
+    s.scale.setScalar(Kit.rnd(.15, .32));
+    s.userData = { x: Kit.rnd(-14, 14), y: Kit.rnd(.6, 6), z: Kit.rnd(-8, 6), ph: Math.random() * 6.28 };
+    S.add(s); sparkles.push(s);
+  }
+
+  /* ---------- the fence ---------- */
+  // runs along Z at x = 0; the sheep cross it along X at z = 0
+  const fenceMat = std(0xb4895a, .9);
+  [-4.6, -1.6, 1.6, 4.6].forEach(z => { const p = Kit.box(.18, 1.4, .18, 0, {}); p.material = fenceMat; p.position.set(0, .7, z); S.add(p); });
+  function rail(z0, z1, y) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(.1, .16, Math.abs(z1 - z0) + .1), fenceMat);
+    r.position.set(0, y, (z0 + z1) / 2); r.castShadow = true; S.add(r); return r;
+  }
+  [[-4.6, -1.6], [1.6, 4.6]].forEach(([a, b]) => { rail(a, b, .55); rail(a, b, 1.08); });
+  rail(-1.6, 1.6, .55);
+  // the top rail in the lane breaks in two, each half hinged at its post
+  const halves = [-1, 1].map(sd => {
+    const pivot = new THREE.Group(); pivot.position.set(0, 1.08, sd * 1.6); S.add(pivot);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(.1, .16, 1.62), fenceMat); m.position.z = -sd * .8; m.castShadow = true; pivot.add(m);
+    pivot.userData.sd = sd; return pivot;
+  });
+
+  /* ---------- the crater ---------- */
+  const IMPACT_X = 2.5;
+  const crater = new THREE.Group(); crater.visible = false; S.add(crater);
+  const craterFloor = new THREE.Mesh(new THREE.CircleGeometry(1.15, 24), std(0x3b2a1c, 1));
+  craterFloor.rotation.x = -Math.PI / 2; craterFloor.position.y = .02; craterFloor.receiveShadow = true; crater.add(craterFloor);
+  const clodMat = std(0x6e4b2f, 1, { flatShading: true }), CLOD = new THREE.DodecahedronGeometry(1, 0);
+  const clods = [];
+  for (let i = 0; i < 14; i++) {
+    const a = i / 14 * Math.PI * 2 + Kit.rnd(-.15, .15), r = Kit.rnd(1.0, 1.35);
+    const c = new THREE.Mesh(CLOD, clodMat);
+    c.position.set(Math.cos(a) * r, .05, Math.sin(a) * r);
+    c.rotation.set(Kit.rnd(0, 3), Kit.rnd(0, 3), Kit.rnd(0, 3));
+    c.userData.s = V3(Kit.rnd(.22, .4), Kit.rnd(.12, .22), Kit.rnd(.22, .4));
+    c.castShadow = c.receiveShadow = true; crater.add(c); clods.push(c);
+  }
+
+  /* ---------- the insomniac ---------- */
+  const BED = { x: -4.6, z: 7, yaw: Math.atan2(4.6, -7) };          // feet towards the fence
+  const bed = new THREE.Group(); bed.position.set(BED.x, 0, BED.z); bed.rotation.y = BED.yaw; S.add(bed);
+  const woodDark = std(0x5a3a26, .8);
+  const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); mesh.castShadow = mesh.receiveShadow = true; bed.add(mesh); return mesh; };
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.35, .3, 2.55), woodDark), 0, .3, -.7);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.24, .22, 2.45), std(0xf2f0ff, .9)), 0, .55, -.7);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.25, .12), woodDark), 0, .66, -1.98);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.45, .7, .12), woodDark), 0, .4, .58);
+  const pillow = add(new THREE.Mesh(BLOB, std(0xffffff, .9)), 0, .76, -1.58); pillow.scale.set(.5, .13, .3);
+  const quiltTex = (() => {
+    const [c, x] = Kit.makeCanvas(128, 128);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i + j) % 2 ? '#e86a8a' : '#ffd36a'; x.fillRect(i * 32, j * 32, 32, 32); }
+    x.strokeStyle = '#ffffff'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(i * 32, 0); x.lineTo(i * 32, 128); x.moveTo(0, i * 32); x.lineTo(128, i * 32); x.stroke(); }
+    return Kit.texFromCanvas(c);
+  })();
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.32, .2, 1.6), std(0xffffff, .95, { map: quiltTex })), 0, .8, -.32);
+  // bedside table, lamp, and a clock that says it is far too late
+  add(new THREE.Mesh(new THREE.BoxGeometry(.6, .62, .5), woodDark), -1.05, .31, -1.55);
+  add(Kit.cyl(.06, .1, .38, 0x3a3040, 10), -1.05, .81, -1.62);
+  const shade = add(new THREE.Mesh(new THREE.ConeGeometry(.24, .26, 16, 1, true), std(0xffe6b0, .6, { emissive: 0xffc070, emissiveIntensity: 1.4, side: THREE.DoubleSide })), -1.05, 1.08, -1.62);
+  const clockTex = Kit.nameTexture('3:47', { w: 256, h: 128, bg: '#120a0a', fg: '#ff3b3b', fill: .8, shadow: '#ff0000', shadowBlur: 16 });
+  const clock = add(new THREE.Mesh(new THREE.BoxGeometry(.32, .16, .12), [std(0x221c22), std(0x221c22), std(0x221c22), std(0x221c22),
+    std(0x000000, .5, { map: clockTex.texture, emissive: 0xffffff, emissiveMap: clockTex.texture, emissiveIntensity: 1.2 }), std(0x221c22)]), -.92, .7, -1.38);
+  clock.rotation.y = .9;
+  const lamp = new THREE.PointLight(0xffb866, 7, 9, 1.6); lamp.position.set(-1.05, 1.15, -1.62); bed.add(lamp);
+
+  const me = People.make({ x: 0, y: .5, z: 0, facing: 0, scale: 1, shirt: 0x8aa8e8, legs: 0x8aa8e8, skin: 0xf0c8a0 });
+  bed.add(me.g);
+  me.mode = 'pose';
+  me.eyes.forEach(e => { e.visible = false; });
+  // big tired eyes with lids that can close
+  const skinMat = me.mats.skin[0];
+  const LID = new THREE.SphereGeometry(.07, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  const lids = [];
+  [-1, 1].forEach(sx => {
+    const eye = new THREE.Group(); eye.position.set(sx * .072, 1.5, .135); me.hips.add(eye);
+    const white = new THREE.Mesh(new THREE.SphereGeometry(.064, 16, 12), std(0xfff4f2, .3)); eye.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(.028, 10, 8), std(0x111118, .2)); pupil.position.z = .048; eye.add(pupil);
+    const lid = new THREE.Mesh(LID, skinMat); eye.add(lid); lids.push(lid);
+    const bag = new THREE.Mesh(new THREE.SphereGeometry(.05, 10, 6), std(0x8a5a8a, .9)); bag.scale.set(1.2, .45, .6); bag.position.set(0, -.068, .02); eye.add(bag);
+  });
+  // a nightcap, of course
+  const capTex = (() => {
+    const [c, x] = Kit.makeCanvas(64, 64);
+    for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffffff' : '#5a7ad8'; x.fillRect(0, i * 8, 64, 8); }
+    return Kit.texFromCanvas(c);
+  })();
+  const cap = new THREE.Group(); cap.position.set(0, 1.6, -.03); cap.rotation.x = -.75; me.hips.add(cap);
+  const capCone = new THREE.Mesh(new THREE.ConeGeometry(.19, .5, 14), std(0xffffff, .9, { map: capTex })); capCone.position.y = .22; cap.add(capCone);
+  const pom = Kit.ball(.07, 0xffffff, 10, { roughness: 1 }); pom.position.y = .48; cap.add(pom);
+  let eyesOpen = 1, sleeping = false;
+  me.hips.rotation.x = -1.22;
+  bed.updateMatrixWorld(true);
+  const HEAD = me.head.getWorldPosition(V3(0, 0, 0));
+  const FACE = V3(0, 0, 1).applyQuaternion(me.hips.getWorldQuaternion(new THREE.Quaternion()));
+  const SIDE = V3(0, 1, 0).cross(FACE).normalize();
+  // in front of the face, a little to the side so the clock and lamp are in frame
+  const closeUp = (drift = 0) => [HEAD.clone().addScaledVector(FACE, 1.55).addScaledVector(SIDE, -.45 + drift).add(V3(0, .25, 0)).toArray(), HEAD.clone().add(V3(0, -.05, 0)).toArray()];
+  function setEyes(o) { lids.forEach(l => { l.rotation.x = -.75 + (1 - o) * (Math.PI / 2 + .75); }); }
+  function poseSleeper(tt) {
+    me.hips.rotation.x = -1.22 + (sleeping ? -.06 : 0);
+    me.hips.rotation.z = sleeping ? Math.sin(tt * .8) * .015 : Math.sin(tt * .35) * .05;
+    me.legPivots.forEach(l => l.rotation.set(0, 0, 0));
+    me.arms[0].rotation.set(.25, 0, .1); me.arms[1].rotation.set(.25, 0, -.1);
+    cap.rotation.z = Math.sin(tt * 1.1) * .08;
+    // wide awake, blinking, unless asleep
+    const blink = !sleeping && (tt % 3.4) < .12 ? 0 : 1;
+    setEyes(sleeping ? 0 : Math.min(eyesOpen, blink));
+  }
+
+  /* ---------- sheep ---------- */
+  const woolMat = std(0xf6f2ea, 1, { flatShading: true }), faceMat = std(0x2e2833, .7), eyeW = std(0xffffff, .3), eyeB = std(0x111111, .2), hoofMat = std(0x1c181f, .6);
+  const LEG = new THREE.CylinderGeometry(.055, .05, .62, 6), SPH = new THREE.SphereGeometry(1, 12, 9);
+  function mk(geo, mat, parent, p, s, r) { const m = new THREE.Mesh(geo, mat); m.position.set(p[0], p[1], p[2]); if (s) m.scale.set(s[0], s[1], s[2]); if (r) m.rotation.set(r[0], r[1], r[2]); m.castShadow = true; parent.add(m); return m; }
+  function makeSheep(name, i) {
+    const g = new THREE.Group(); g.rotation.order = 'YXZ';       // heading, then pitch
+    mk(BLOB, woolMat, g, [0, .95, 0], [.78, .52, .5]);
+    [[.3, 1.22, .15, .32], [-.25, 1.2, -.12, .34], [-.05, 1.3, .18, .3], [.12, 1.17, -.24, .3], [-.55, 1.05, 0, .32], [.45, 1.0, 0, .3]]
+      .forEach(([x, y, z, r]) => mk(BLOB, woolMat, g, [x, y, z], [r, r, r]));
+    const tail = mk(BLOB, woolMat, g, [-.82, 1.05, 0], [.16, .16, .16]);
+    const head = new THREE.Group(); head.position.set(.8, 1.12, 0); g.add(head);
+    mk(SPH, faceMat, head, [.13, -.05, 0], [.26, .21, .18], [0, 0, -.35]);
+    mk(BLOB, woolMat, head, [0, .14, 0], [.17, .14, .17]);
+    [-1, 1].forEach(sz => {
+      mk(SPH, faceMat, head, [-.02, .05, sz * .2], [.06, .045, .15], [sz * .5, 0, 0]);
+      mk(SPH, eyeW, head, [.2, .05, sz * .1], [.055, .055, .055]);
+      mk(SPH, eyeB, head, [.245, .05, sz * .105], [.028, .028, .028]);
+    });
+    const legs = [[.36, .2], [.36, -.2], [-.36, .2], [-.36, -.2]].map(([x, z]) => {
+      const pv = new THREE.Group(); pv.position.set(x, .62, z); g.add(pv);
+      mk(LEG, faceMat, pv, [0, -.31, 0]);
+      mk(SPH, hoofMat, pv, [0, -.6, 0], [.07, .045, .07]);
+      pv.userData.front = x > 0; return pv;
+    });
+    const label = Kit.label(st, name, { height: .5, minScreen: .026 });
+    S.add(label);
+    S.add(g);
+    return { g, head, legs, tail, label, name, lift: 2.0 + (i % 2) * .5, ph: Math.random() * 6.28, state: 'herd' };
+  }
+  let flock = [];
+  function herdSpot(i, n) {
+    const cols = 5;
+    return V3(-13.6 + (i % cols) * 1.85 + Kit.rnd(-.25, .25), 0, -1.6 - Math.floor(i / cols) * 1.75 + Kit.rnd(-.2, .2));
+  }
+  function buildFlock() {
+    flock.forEach(s => { s.label.dispose(); S.remove(s.g); });
+    const names = Roster.all();
+    flock = names.map((n, i) => {
+      const s = makeSheep(n, i);
+      s.home = herdSpot(i, names.length);
+      s.g.position.copy(s.home);
+      s.g.rotation.y = Kit.rnd(-.5, .5);
+      return s;
+    });
+  }
+  buildFlock();
+  function resetRail() {
+    halves.forEach(h => { h.rotation.set(0, 0, 0); h.position.y = 1.08; });
+  }
+
+  /* ---------- counting numbers and Zzz ---------- */
+  function glyph(text, fg, w = 192) {
+    const t = Kit.nameTexture(text, { w, h: 128, fg, fill: .9, stroke: '#1a1440', strokeWidth: 6, shadow: 'rgba(0,0,0,.5)', shadowBlur: 10 });
+    return t.texture;
+  }
+  const blankTex = Kit.texFromCanvas(Kit.makeCanvas(4, 4)[0]);
+  // always carrying a map and always drawn (just invisible), so the first number never recompiles
+  const countPool = [0, 1, 2, 3].map(() => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: blankTex, transparent: true, opacity: 0, depthWrite: false, depthTest: false, fog: false, toneMapped: false })); s.renderOrder = 20; s.position.set(0, -50, 0); S.add(s); return s; });
+  let countTex = [], poolI = 0;
+  function popCount(n) {
+    const s = countPool[poolI++ % countPool.length];
+    s.material.map = countTex[n - 1]; s.material.needsUpdate = true;
+    s.visible = true; s.material.opacity = 1;
+    const y0 = 3.3, dx = Kit.rnd(-.3, .3);
+    Kit.tween(.75, t => {
+      const pop = t < .2 ? Kit.ease.outBack(t / .2) : 1;
+      s.scale.set(2.3 * pop, 1.55 * pop, 1);
+      s.position.set(dx, y0 + t * .9, 0);
+      s.material.opacity = t < .55 ? 1 : 1 - (t - .55) / .45;
+    }, 'linear').then(() => { if (s.material.opacity <= .01) s.visible = false; });
+  }
+  const zTex = glyph('Z', '#cfe0ff', 128);
+  const zzz = [0, 1, 2].map(() => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: zTex, transparent: true, depthWrite: false })); s.visible = false; S.add(s); return s; });
+
+  /* ---------- running and jumping ---------- */
+  const SPEED = 9.5, LANE_X = -6.5, JUMP_X = 2.5, EXIT_X = 16;
+  let tt = 0, idling = true, counted = 0, toCount = 1, onTrip = null;
+  const _p = V3(0, 0, 0);
+  function gallop(s, phase, amp) {
+    s.legs.forEach(l => { l.rotation.z = Math.sin(phase + (l.userData.front ? 0 : Math.PI)) * amp; });
+  }
+  function tuck(s, k) {
+    s.legs.forEach(l => { l.rotation.z = (l.userData.front ? 1.05 : -1.0) * k; });
+  }
+  function stepSheep(s, dt) {
+    if (s.state === 'herd') {
+      // grazing: nose down, now and then a look round
+      const k = Math.max(0, Math.sin(tt * 1.4 + s.ph));
+      s.head.rotation.z = idling ? -.55 - .25 * k : s.head.rotation.z * .9;
+      s.legs.forEach(l => { l.rotation.z *= .9; });
+      return;
+    }
+    if (s.state === 'halt') {
+      // braked hard, now staring at the casualty
+      s.legs.forEach(l => { l.rotation.z *= .85; });
+      s.g.rotation.z *= .85;
+      s.g.position.y *= .8;
+      if (s.stare) { const yaw = Math.atan2(-(s.stare.z - s.g.position.z), s.stare.x - s.g.position.x); s.g.rotation.y += (yaw - s.g.rotation.y) * Math.min(1, dt * 4); }
+      s.head.rotation.z = .15;
+      return;
+    }
+    if (s.state !== 'run') return;
+    const t = tt - s.t0;
+    if (t < 0) { s.head.rotation.z *= .9; return; }
+    let d = t * SPEED;
+    const d1 = s.d1;
+    if (d < d1) {
+      // trot from the herd to the start of the lane
+      s.g.position.lerpVectors(s.home, s.laneStart, d / d1);
+      s.g.rotation.y = s.yaw0;
+      s.g.position.y = Math.abs(Math.sin(d * 1.7)) * .12;
+      gallop(s, d * 3.4, .75);
+      s.head.rotation.z = Math.sin(d * 3.4) * .08;
+      return;
+    }
+    const lane = d - d1;
+    const x = LANE_X + lane;
+    s.g.rotation.y += (0 - s.g.rotation.y) * Math.min(1, dt * 10);
+    s.g.position.x = x;
+    // once someone is face down past the fence, everyone after steps round them
+    s.g.position.z = s.swerve ? -2.0 * THREE.MathUtils.smoothstep(x, .6, 2.4) : 0;
+    const H = s.winner ? .95 : 2.05;
+    // stretch in the air, squash on landing
+    const land = x > JUMP_X && x < JUMP_X + 1.2 ? 1 - (x - JUMP_X) / 1.2 : 0;
+    const air = Math.abs(x) < JUMP_X ? 1 - Math.abs(x / JUMP_X) : 0;
+    s.g.scale.set(1 + .14 * land + .08 * air, 1 - .18 * land + .06 * air, 1 + .1 * land);
+    if (Math.abs(x) < JUMP_X) {
+      const u = x / JUMP_X;
+      s.g.position.y = H * (1 - u * u);
+      s.g.rotation.z = Math.atan(-2 * H * u / JUMP_X) * .7;
+      tuck(s, Math.min(1, (1 - Math.abs(u)) * 3));
+      s.head.rotation.z = -s.g.rotation.z * .4;
+      if (!s.counted && x >= 0 && !s.winner) {
+        s.counted = true; counted++;
+        popCount(counted);
+        SFX.tone({ freq: 523.25 * Math.pow(2, Math.min(counted, 24) / 12), dur: .16, type: 'sine', gain: .09 });
+        if (counted % 4 === 1) SFX.baa(Kit.rnd(.9, 1.25), .45);
+        eyesOpen = 1 - .6 * counted / toCount;
+      }
+      if (s.winner && x >= -.45) { s.state = 'trip'; onTrip && onTrip(s); }
+    } else {
+      s.g.position.y = Math.abs(Math.sin(lane * 1.7)) * .12;
+      s.g.rotation.z *= .8;
+      gallop(s, lane * 3.4, .75);
+      s.head.rotation.z = Math.sin(lane * 3.4) * .08;
+    }
+    if (x > EXIT_X) { s.state = 'gone'; s.g.visible = false; s.label.visible = false; }
+  }
+
+  st.add(dt => {
+    tt += dt;
+    poseSleeper(tt);
+    flock.forEach(s => {
+      stepSheep(s, dt);
+      if (s.state === 'planted') {
+        s.legs.forEach(l => { l.rotation.z = l.userData.front ? -.9 : -1.6 + Math.sin(tt * 11 + l.position.z * 14) * .45; });   // back legs up, kicking
+        s.tail.position.z = Math.sin(tt * 14) * .06;
+      }
+      if (s.g.visible) s.label.position.set(s.g.position.x, s.state === 'planted' || s.state === 'trip' ? 2.25 : s.g.position.y + s.lift, s.g.position.z);
+    });
+    sparkles.forEach(s => { const u = s.userData; s.position.set(u.x + Math.sin(tt * .3 + u.ph) * .8, u.y + Math.sin(tt * .7 + u.ph) * .4, u.z); s.material.opacity = .35 + .35 * Math.sin(tt * 2 + u.ph); });
+    if (sleeping) {
+      const head = me.head.getWorldPosition(_p);
+      zzz.forEach((z, i) => {
+        const k = ((tt * .45 + i / 3) % 1);
+        z.visible = true;
+        z.position.set(head.x + .3 + k * .8, head.y + .35 + k * 1.6, head.z + Math.sin(k * 6 + i) * .15);
+        z.scale.setScalar(.25 + k * .45);
+        z.material.opacity = k < .15 ? k / .15 : 1 - (k - .15) / .85;
+      });
+    }
+    if (idling) { const [p, a] = closeUp(Math.sin(tt * .25) * .15); st.look(p, a); }
+    return true;
+  });
+
+  function resetScene() {
+    Kit.clearTweens();
+    onTrip = null; sleeping = false; eyesOpen = 1; counted = 0;
+    zzz.forEach(z => { z.visible = false; });
+    countPool.forEach(s => { s.visible = false; });
+    resetRail();
+    crater.visible = false; clods.forEach(c => c.scale.setScalar(.001));
+    buildFlock();
+    idling = true;
+  }
+
+  /* ---------- the run ---------- */
+  async function run(winner, api) {
+    if (flock.map(s => s.name).join('|') !== Roster.all().join('|') || flock.some(s => s.state !== 'herd')) resetScene();
+    idling = false;
+    const cam = Kit.chase(st, { rate: 2.8 });
+    cam.to(...closeUp());
+    setTimeout(() => cam.to([.2, 2.3, 9.4], [.2, 1.45, 0], 2.6), 600);
+    const win = flock.find(s => s.name === winner) || flock[0];
+    const losers = flock.filter(s => s !== win);
+    toCount = Math.max(1, losers.length);
+    countTex.forEach(t => t.dispose());
+    countTex = losers.map((_, i) => glyph(String(i + 1), '#fff6c8'));
+    countTex.forEach(t => st.renderer.initTexture(t));          // upload now, not on the first jump
+    counted = 0;
+    const lull = SFX.lullaby(14, 1.15);
+    api.caption('3:47am. Count them.');
+    flock.forEach(s => { s.head.rotation.z = 0; });
+
+    // The queue is shuffled and the one who trips is somewhere in it, not at
+    // the end. Arrivals are on a fixed, quickening schedule, so a big team is
+    // no slower than a small one: they just come over faster.
+    const queue = flock.slice().sort(() => Math.random() - .5);
+    const LEAD = 1.15, STREAM = Math.min(4.2, .5 * queue.length);
+    const w = queue.map((_, i) => 1 - .55 * i / queue.length);
+    const wsum = w.reduce((a, b) => a + b, 0);
+    let arrive = tt + LEAD;
+    const laneStart = V3(LANE_X, 0, 0);
+    queue.forEach((s, i) => {
+      s.laneStart = laneStart;
+      s.d1 = s.home.distanceTo(laneStart);
+      s.yaw0 = Math.atan2(-(laneStart.z - s.home.z), laneStart.x - s.home.x);
+      s.t0 = arrive - s.d1 / SPEED;
+      s.state = 'run';
+      s.winner = s === win;
+      arrive += STREAM * w[i] / wsum;
+    });
+    setTimeout(() => api.caption(null), 1400);
+
+    // wait for the stumble
+    const tripped = new Promise(r => { onTrip = r; });
+    await tripped;
+
+    // everyone not already over the fence slams on the brakes
+    const stare = V3(IMPACT_X, 0, 0);
+    let skids = 0;
+    flock.forEach(s => {
+      if (s === win || s.state !== 'run') return;
+      s.label.dim();
+      const started = tt - s.t0 > 0, x = s.g.position.x;
+      if (started && (tt - s.t0) * SPEED > s.d1 && x >= -JUMP_X) { s.swerve = true; return; }   // already airborne: let them land and step round
+      s.state = 'halt'; s.stare = stare;
+      if (started) {
+        skids++;
+        const from = s.g.position.clone(), dir = (tt - s.t0) * SPEED > s.d1 ? V3(1, 0, 0) : s.laneStart.clone().sub(s.home).normalize();
+        const to = from.clone().addScaledVector(dir, .7);
+        if (to.x > -JUMP_X - .4) to.x = Math.min(to.x, -JUMP_X - .4);
+        Kit.tween(.35, t => { s.g.position.x = from.x + (to.x - from.x) * t; s.g.position.z = from.z + (to.z - from.z) * t; s.g.rotation.z = .25 * Math.sin(t * Math.PI); }, 'outQuad');
+      }
+    });
+    if (skids) setTimeout(() => SFX.skid(.45), 60);
+
+    /* ★ CLIP ★ */
+    const g = win.g, p0 = g.position.clone(), r0 = g.rotation.z;
+    lull.stop(.12);
+    SFX.crack(); SFX.thud(.45); SFX.slideDown(.9); SFX.baa(.75, .4);
+    st.shake(.14, .86);
+    halves.forEach(h => {
+      const sd = h.userData.sd, spin = Kit.rnd(.9, 1.2);
+      Kit.tween(.55, t => { h.rotation.x = sd * spin * Kit.ease.outBounce(t) * 1.25; }, 'linear');
+    });
+    Kit.burst(st, { origin: V3(0, 1.1, 0), count: 18, size: .09, color: 0xb4895a, speed: 4, gravity: -14, life: 1.2, floor: .05 });
+    cam.to([2.6, 1.8, 9], [2.2, .7, 0], 3.2);
+    // over the rail and straight down, nose first
+    const TILT = -1.35, CONTACT_Y = .99, BURIED_Y = .1;
+    await Kit.tween(.42, t => {
+      g.position.set(p0.x + (IMPACT_X - .1 - p0.x) * t, p0.y + Math.sin(t * Math.PI) * .55 + (CONTACT_Y - p0.y) * t * t, 0);
+      g.rotation.z = r0 + (TILT - r0) * Kit.ease.inQuad(t);
+      win.legs.forEach(l => { l.rotation.z = (l.userData.front ? 1.1 : -1.0) * (1 - t) + Math.sin(t * 30) * .3; });
+    }, 'linear');
+
+    /* ★ THUNK ★ */
+    SFX.thud(.8); SFX.bonk(); SFX.crash(.2);
+    st.shake(.3, .86);
+    const hole = V3(IMPACT_X + .1, 0, 0);
+    crater.position.copy(hole); crater.visible = true;
+    Kit.tween(.22, t => clods.forEach(c => { c.scale.copy(c.userData.s).multiplyScalar(Math.max(.001, Kit.ease.outBack(t))); }), 'linear');
+    Kit.burst(st, { origin: hole.clone().setY(.2), count: 36, size: .12, color: 0x6e4b2f, speed: 6, dir: V3(0, 1, 0), spread: 1.6, gravity: -16, life: 1.3, floor: .05 });
+    Kit.burst(st, { origin: hole.clone().setY(.2), count: 14, size: .1, color: 0x5f9c6a, speed: 5, dir: V3(0, 1, 0), spread: 1.4, gravity: -14, life: 1.1, floor: .05 });
+    Kit.puffs(st, { origin: hole.clone().setY(.3), count: 14, color: 0xa8916c, additive: false, speed: 2.6, spread: 1.2, sizeMin: .5, sizeMax: 1.1, life: 1.2, gravity: .5, opacity: .7, growMin: .6, growMax: 1.4 });
+    // punch in to the shoulders, then a dazed wobble
+    await Kit.tween(.16, t => { g.position.y = CONTACT_Y + (BURIED_Y - CONTACT_Y) * t; g.position.x = IMPACT_X - .1 + .2 * t; }, 'outQuad');
+    Kit.tween(.7, t => { g.rotation.z = TILT + Math.sin(t * Math.PI * 4) * .1 * (1 - t); }, 'linear');
+    SFX.baa(.7, .35);
+    win.state = 'planted';
+    win.label.highlight(0xffd23f, 1.4);
+    win.label.material.depthTest = false; win.label.renderOrder = 30;
+
+    // stay on the sheep; off camera, that did it
+    const sx = g.position.x;
+    cam.to([sx + 3.0, 1.9, -4.4], [sx, .6, .2], 3.2);
+    await Kit.wait(450);
+    const e0 = eyesOpen;
+    Kit.tween(.6, t => { eyesOpen = e0 * (1 - t); }, 'inOutQuad').then(() => { sleeping = true; SFX.snore(); });
+    await Kit.wait(1100);
+    cam.stop();
+  }
+
+  Picker.init({
+    key: 'sheep-counting',
+    kicker: 'Did not clear the fence',
+    stinger: () => { SFX.baa(.85, .5); SFX.ding(1046.5); },
+    tagline: 'It is 3:47am. Someone has to count the team over the fence.',
+    goLabel: 'Start counting',
+    againLabel: 'Still awake',
+    verdict: n => `${n} clipped the fence and put everyone to sleep. ${n} goes first.`,
+    prewarm: [new THREE.MeshStandardMaterial({ color: 0x888888 })],
+    hold: 900,
+    run,
+    reset: resetScene
+  });
+})();
+</script>
+</body>
+</html>

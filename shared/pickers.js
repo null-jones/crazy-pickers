@@ -30,5 +30,7 @@ window.PICKERS = [
   { key: 'trebuchet',       emoji: '🏰', accent: '#e8b04a', accent2: '#9be36a', title: 'Cow Trebuchet',
     blurb: 'Named cows versus a castle gate. The cows are mostly losing.' },
   { key: 'pigeon-strike',   emoji: '🐦', accent: '#b9c3d6', accent2: '#8fe0a8', title: 'Pigeon Strike',
-    blurb: 'The team is on a park bench. One pigeon has made a decision.' }
+    blurb: 'The team is on a park bench. One pigeon has made a decision.' },
+  { key: 'sheep-counting',  emoji: '🐑', accent: '#b8a4ff', accent2: '#ffe08a', title: 'Counting Sheep',
+    blurb: 'An insomniac counts the team over a fence. One of them does not clear it.' }
 ];
